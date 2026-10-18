@@ -128,6 +128,16 @@ test('production assets and navigation stay inside the deployment prefix', async
 })
 
 test('console displays a process created in the real PostgreSQL database', async ({ page, request }) => {
+  test.setTimeout(120_000)
+  // Development identity mode logs in on every full-page visit. Respect the real
+  // production gateway's 10/minute login throttle while checking these legacy routes.
+  let nextLoginAt = 0
+  await page.route('**/api/login', async route => {
+    const delay = Math.max(0, nextLoginAt - Date.now())
+    nextLoginAt = Math.max(Date.now(), nextLoginAt) + 6500
+    if (delay) await new Promise(resolve => setTimeout(resolve, delay))
+    await route.continue()
+  })
   await managerFixture(request, page)
   const process = await processFixture(request)
   await page.goto('processes')

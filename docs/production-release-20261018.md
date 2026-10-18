@@ -64,3 +64,8 @@ silently disable authentication to recover availability.
 
 Mail reception stays disabled until a real mailbox is configured and tested. The validation
 report covers observed scenarios; it is not a guarantee for every business or input.
+
+The installed deployment receiver also runs `deploy/require-private.py` before stopping
+services when `/opt/trace-it/REQUIRE_PRIVATE_DEPLOYS` exists. This rejects older backend
+images that ignore the new environment flags, including frontend-only deployments.
+The guard uses an in-process ASGI request without lifespan or database reads.
