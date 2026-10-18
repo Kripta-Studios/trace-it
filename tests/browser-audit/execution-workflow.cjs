@@ -97,6 +97,17 @@ const state = fs.existsSync(statePath) ? JSON.parse(fs.readFileSync(statePath)) 
         await publish.last().click();
         await page.waitForTimeout(1500);
       }
+    } else if(stage==='localocr') {
+      await visit(`/processes/${state.processId}/settings?tab=modelos`);
+      const extraction=page.locator('details').filter({has:page.locator('summary').filter({hasText:'Document extraction'})});
+      await extraction.locator('select').selectOption('local');
+      const field=label=>extraction.locator('label').filter({has:page.getByText(label,{exact:true})}).locator('input');
+      await field('Independent visual readers, comma separated').fill('');
+      await field('vision model').fill('');
+      await field('text judge model').fill('');
+      await page.getByRole('button',{name:'Save draft and validate',exact:true}).click();
+      await page.getByRole('button',{name:'Publicar',exact:true}).last().click();
+      await page.waitForTimeout(1500);
     } else if(stage==='reprocess') {
       await visit(`/processes/${state.processId}/rules/${state.ruleIds[0]}`);
       await page.getByRole('button',{name:'Quitar de la versión',exact:true}).click();

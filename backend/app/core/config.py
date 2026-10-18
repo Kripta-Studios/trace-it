@@ -29,7 +29,7 @@ class Settings(BaseSettings):
     fallback_models: list[str] = ["helmcode:deepseek-v4-flash", "helmcode:qwen3.6"]
     # Bound provider waits for roles without their own settings. A provider failure moves
     # to the configured fallback instead of silently repeating a ten-minute SDK timeout.
-    agent_timeout_seconds: float = Field(default=120, gt=0, le=3600)
+    agent_timeout_seconds: float = Field(default=300, gt=0, le=3600)
     agent_http_retries: int = Field(default=0, ge=0, le=8)
     # OpenAI-compatible gateways. Select Helmcode with `helmcode:<model>` and Vercel AI
     # Gateway with `vercel:<provider/model>`. Credentials stay in their environment variables.

@@ -6,13 +6,13 @@ import uuid
 
 import pytest
 from httpx import ASGITransport, AsyncClient
-from pydantic import BaseModel
+from pydantic import BaseModel, ValidationError
 from pydantic_ai import Agent, ModelRetry
 from pydantic_ai.messages import ModelResponse
 from pydantic_ai.models.function import FunctionModel
 
 from app.core import events
-from app.core.config import settings
+from app.core.config import Settings, settings
 from app.core.database import session_factory
 from app.features.agents import llm
 from app.features.use_cases import service as use_cases
@@ -106,7 +106,7 @@ async def test_platform_defaults_bound_unconfigured_provider_and_preserve_fallba
 @pytest.mark.parametrize(
     "role_timeout,model_timeout,expected",
     [
-        (None, None, 120),
+        (None, None, 300),
         (None, 3, 3),
         (5, 3, 5),
         (5, None, 5),
@@ -115,7 +115,7 @@ async def test_platform_defaults_bound_unconfigured_provider_and_preserve_fallba
 async def test_provider_timeout_overrides_remain_effective(
     monkeypatch, role_timeout, model_timeout, expected
 ):
-    monkeypatch.setattr(settings, "agent_timeout_seconds", 120)
+    monkeypatch.setattr(settings, "agent_timeout_seconds", 300)
     calls = []
     stalling_provider(monkeypatch, calls)
     setup = llm.Setup(
@@ -127,6 +127,26 @@ async def test_provider_timeout_overrides_remain_effective(
     )
     await llm.run(Agent(None), "assistant", "hi", instructions="", setup=setup)
     assert calls == [("fast", expected)]
+
+
+def test_platform_provider_defaults_allow_slow_compilation_without_http_retries():
+    assert Settings.model_fields["agent_timeout_seconds"].default == 300
+    assert Settings.model_fields["agent_http_retries"].default == 0
+
+
+@pytest.mark.parametrize(
+    "invalid",
+    [
+        {"agent_timeout_seconds": 0},
+        {"agent_timeout_seconds": -1},
+        {"agent_timeout_seconds": 3601},
+        {"agent_http_retries": -1},
+        {"agent_http_retries": 9},
+    ],
+)
+def test_platform_provider_limits_reject_invalid_configuration(invalid):
+    with pytest.raises(ValidationError):
+        Settings(_env_file=None, **invalid)
 
 
 class Answer(BaseModel):
