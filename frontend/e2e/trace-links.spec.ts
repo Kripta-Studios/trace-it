@@ -17,6 +17,7 @@ async function fixture(page: Page) {
     if (url.pathname.includes('/src/')) return route.continue()
     const path = url.pathname.split('/api')[1]
     let body: unknown = []
+    if (path === '/auth-config') return route.fulfill({ json: { mode: 'identity', session_hours: 12 } })
     if (path === '/login') body = { id: 1, name: 'Reviewer', email: 'test@ci.invalid', role: 'manager' }
     if (path === '/processes') body = [process]
     if (path === '/processes/1') body = process
@@ -218,5 +219,52 @@ test('failed sources request is shown as an error and can be retried', async ({ 
   failing = false
   await page.getByRole('button', { name: 'Reintentar', exact: true }).click()
   await expect(page.getByText('Sin fuentes. Sin ellas, ninguna regla que cruce datos puede decidir.', { exact: true })).toBeVisible()
+  expect(state.errors).toEqual([])
+})
+
+for (const sender of ['', 'unparseable sender', 'Accounts <accounts@business.invalid>']) {
+  test(`review only offers a contact for a recorded valid sender: ${sender || 'absent'}`, async ({ page }) => {
+    await fixture(page)
+    await page.route('**/api/instances/21', route => route.fulfill({ json: {
+      id: 21, process_id: 1, name: filename, status: 'DECIDED', decision: 'PAGAR',
+      decisions: [], reviews: [], symbols: {}, values: {}, review_pending: false,
+      events: sender ? [{ data: { automation: 'mail_ingestion', mail_origin: { sender } } }] : [],
+    } }))
+    await page.goto('processes/1/review?i=21')
+    await expect(page.getByRole('link', { name: 'Ver traza →' })).toBeVisible()
+    const contact = page.locator('a[href^="mailto:"]')
+    if (sender.includes('@')) {
+      await expect(contact).toHaveAttribute('href', /^mailto:accounts%40business.invalid\?subject=/)
+      await expect(page.getByText('Accounts', { exact: true })).toBeVisible()
+    } else {
+      await expect(contact).toHaveCount(0)
+      await expect(page.getByText('billing@example.com', { exact: true })).toHaveCount(0)
+    }
+  })
+}
+
+test('nested document modal closes one layer at a time and restores focus', async ({ page }) => {
+  const state = await fixture(page)
+  await page.setViewportSize({ width: 390, height: 844 })
+  await page.route('**/api/processes/1/queue', route => route.fulfill({ json: [{
+    id: 21, process_id: 1, name: filename, status: 'DECIDED', decision: 'ESCALAR',
+    reason: 'Review this document', values: {}, review_pending: false,
+  }] }))
+  await page.route('**/api/instances/21/document', route => route.fulfill({ json: {
+    id: 21, file_id: filename, kind: 'document', sha256: 'test', pipeline_version: 'test', fields: {}, text: '',
+  } }))
+  await page.route('**/api/instances/21/file', route => route.fulfill({ contentType: 'text/plain', body: 'Document fixture' }))
+  await page.goto('processes/1?i=21')
+  const openDocument = page.getByRole('button', { name: 'Ver el documento', exact: true })
+  await openDocument.click()
+  await expect(page.getByRole('dialog')).toHaveCount(2)
+  await expect(page.getByRole('dialog', { name: 'Original document' })).toBeVisible()
+  await page.keyboard.press('Escape')
+  await expect(page.getByRole('dialog')).toHaveCount(1)
+  await expect(openDocument).toBeFocused()
+  expect(await page.evaluate(() => document.body.style.overflow)).toBe('hidden')
+  await page.keyboard.press('Escape')
+  await expect(page.getByRole('dialog')).toHaveCount(0)
+  expect(await page.evaluate(() => document.body.style.overflow)).not.toBe('hidden')
   expect(state.errors).toEqual([])
 })

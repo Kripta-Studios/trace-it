@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "trace-it",
-    "description": "Deterministic decision processes with rules compiled to code by agents.\n\nUse `Authorization: Bearer <API_TOKEN>` for every application endpoint and the `/db` administration endpoints. Bearer calls act as the dedicated API manager; `X-User-Id` is ignored. Browser/HTTP Basic callers continue to identify with `X-User-Id` (see `POST /login`). `/db` always requires Bearer authentication. Mail-ingestion endpoints require their separate process-scoped mail service token. See the [API guide](guide) for examples, permissions and deployment details. Errors are `{\"code\", \"message\"}`, except request validation (422), which keeps FastAPI's `{\"detail\": [...]}`.",
+    "description": "Deterministic decision processes with rules compiled to code by agents.\n\nUse `Authorization: Bearer <API_TOKEN>` for every application endpoint and the `/db` administration endpoints. Bearer calls act as the dedicated API manager; `X-User-Id` is ignored. Private deployments authenticate browser users with passwords and secure session cookies (see `POST /login`). Development identity headers are supported only when password mode is disabled. `/db` requires Bearer. Mail-ingestion endpoints require their separate process-scoped mail service token. See the [API guide](guide) for examples, permissions and deployment details. Errors are `{\"code\", \"message\"}`, except request validation (422), which keeps FastAPI's `{\"detail\": [...]}`.",
     "version": "0.1.0"
   },
   "paths": {
@@ -2596,7 +2596,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/UserIn"
+                "$ref": "#/components/schemas/CreateUserIn"
               }
             }
           }
@@ -2633,7 +2633,7 @@
         "tags": [
           "users"
         ],
-        "summary": "Find the user by email. Send its id as `X-User-Id` afterwards",
+        "summary": "Sign in; password deployments issue a secure browser session cookie",
         "operationId": "login",
         "requestBody": {
           "content": {
@@ -2665,6 +2665,53 @@
                 }
               }
             }
+          }
+        },
+        "security": [
+          {
+            "TraceItBearer": []
+          }
+        ]
+      }
+    },
+    "/auth-config": {
+      "get": {
+        "tags": [
+          "users"
+        ],
+        "summary": "Browser authentication mode",
+        "operationId": "getAuthConfig",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object",
+                  "title": "Response Getauthconfig"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "TraceItBearer": []
+          }
+        ]
+      }
+    },
+    "/logout": {
+      "post": {
+        "tags": [
+          "users"
+        ],
+        "summary": "End browser sessions",
+        "operationId": "logout",
+        "responses": {
+          "204": {
+            "description": "Successful Response"
           }
         },
         "security": [
@@ -8094,6 +8141,109 @@
         }
       }
     },
+    "/processes/{process_id}/knowledge": {
+      "get": {
+        "tags": [
+          "knowledge"
+        ],
+        "summary": "Find persisted source documents by literal filename or extracted text",
+        "operationId": "searchProcessDocuments",
+        "security": [
+          {
+            "TraceItBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "process_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Process Id"
+            }
+          },
+          {
+            "name": "query",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "maxLength": 300,
+              "default": "",
+              "title": "Query"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 50,
+              "minimum": 1,
+              "default": 25,
+              "title": "Limit"
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "minimum": 1
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          },
+          {
+            "name": "x-user-id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-User-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/KnowledgePage"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/processes/{process_id}/alerts": {
       "get": {
         "tags": [
@@ -10617,6 +10767,48 @@
           "required"
         ],
         "title": "ConnectorProposal"
+      },
+      "CreateUserIn": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "email": {
+            "type": "string",
+            "title": "Email"
+          },
+          "role": {
+            "type": "string",
+            "enum": [
+              "manager",
+              "operator"
+            ],
+            "title": "Role",
+            "default": "operator"
+          },
+          "password": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 1024,
+                "minLength": 12,
+                "format": "password",
+                "writeOnly": true
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Password"
+          }
+        },
+        "type": "object",
+        "required": [
+          "name",
+          "email"
+        ],
+        "title": "CreateUserIn"
       },
       "CreatedCheck": {
         "properties": {
@@ -13980,6 +14172,83 @@
         "title": "InstanceTrace",
         "description": "The journey of one instance: its file, how it was read, its symbols, every decision\nwith each rule's answer, what people did, and what the export writes for it."
       },
+      "KnowledgeDocument": {
+        "properties": {
+          "instance_id": {
+            "type": "integer",
+            "title": "Instance Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "uploaded_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Uploaded At"
+          },
+          "has_text": {
+            "type": "boolean",
+            "title": "Has Text"
+          },
+          "has_evidence": {
+            "type": "boolean",
+            "title": "Has Evidence"
+          },
+          "excerpt": {
+            "type": "string",
+            "title": "Excerpt"
+          }
+        },
+        "type": "object",
+        "required": [
+          "instance_id",
+          "name",
+          "status",
+          "uploaded_at",
+          "has_text",
+          "has_evidence",
+          "excerpt"
+        ],
+        "title": "KnowledgeDocument"
+      },
+      "KnowledgePage": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/KnowledgeDocument"
+            },
+            "type": "array",
+            "title": "Items"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          },
+          "query": {
+            "type": "string",
+            "title": "Query"
+          }
+        },
+        "type": "object",
+        "required": [
+          "items",
+          "next_cursor",
+          "query"
+        ],
+        "title": "KnowledgePage"
+      },
       "LegacyMailAudit": {
         "properties": {
           "id": {
@@ -14152,7 +14421,23 @@
         "properties": {
           "email": {
             "type": "string",
+            "maxLength": 320,
+            "minLength": 1,
             "title": "Email"
+          },
+          "password": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 1024,
+                "format": "password",
+                "writeOnly": true
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Password"
           }
         },
         "type": "object",

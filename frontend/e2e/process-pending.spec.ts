@@ -6,6 +6,7 @@ test('process rows show only pending human reviews and open their inbox', async 
     if (url.pathname.includes('/src/')) return route.continue()
     const path = url.pathname.split('/api')[1]
     let body: unknown = []
+    if (path === '/auth-config') return route.fulfill({ json: { mode: 'identity', session_hours: 12 } })
     if (path === '/login') body = { id: 1, name: 'Manager', email: 'test@ci.invalid', role: 'manager' }
     if (path === '/processes') body = [
       { id: 1, name: 'Invoices', description: 'Review invoice payments', use_case_id: 1 },

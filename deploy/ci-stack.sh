@@ -2,11 +2,13 @@
 # An isolated, disposable stack. Never source the developer/production .env.
 set -Eeuo pipefail
 cd "$(dirname "$0")/.."
+export TRACE_REQUIRE_PASSWORD_AUTH=false
 export COMPOSE_PROJECT_NAME=trace-it-ci
 export TRACE_BACKEND_IMAGE=trace-it-backend:ci
 export TRACE_FRONTEND_IMAGE=trace-it-frontend:ci
 export POSTGRES_PASSWORD=ci-only-database
 export TRACE_PORT=18174
+export TRACE_CRIMINAL_RECORDS_PORT=18179
 export TRACE_ENV_FILE="$PWD/deploy/.env.ci"
 export TRACE_AUTH_FILE="$PWD/deploy/.htpasswd"
 export TRACE_MODEL_DIR="$PWD/deploy/models"

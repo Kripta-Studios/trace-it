@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from pydantic import AliasChoices, Field, SecretStr
+from pydantic import AliasChoices, Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -12,6 +12,26 @@ class Settings(BaseSettings):
     database_url: str = "postgresql+psycopg://trace:trace@localhost:5432/trace"
     # Empty disables Bearer access. Never put the production token in source control.
     api_token: SecretStr = SecretStr("")
+    # Set a high-entropy secret to require password sessions for browser access.
+    # An empty value retains the explicitly opt-in development identity selector.
+    session_secret: SecretStr = SecretStr("")
+    session_hours: int = Field(default=12, ge=1, le=168)
+    session_cookie_secure: bool = True
+    require_password_auth: bool = False
+
+    @field_validator("session_secret")
+    @classmethod
+    def validate_session_secret(cls, value: SecretStr) -> SecretStr:
+        if value.get_secret_value() and len(value.get_secret_value()) < 32:
+            raise ValueError("session_secret must contain at least 32 characters")
+        return value
+
+    @model_validator(mode="after")
+    def require_production_auth(self) -> "Settings":
+        if self.require_password_auth and not self.session_secret.get_secret_value():
+            raise ValueError("Password authentication is required; set TRACE_SESSION_SECRET")
+        return self
+
     # Process packs, where a source's connector configuration lives (`<pack>/sources.json`).
     # In Docker this resolves to the /processes mount.
     processes_dir: Path = Path(__file__).resolve().parents[3] / "processes"

@@ -26,6 +26,7 @@ services:
     image: ${TRACE_BACKEND_IMAGE:?Set TRACE_BACKEND_IMAGE}
     env_file: ["${TRACE_ENV_FILE:-./.env.runtime}"]
     environment:
+      TRACE_REQUIRE_PASSWORD_AUTH: "${TRACE_REQUIRE_PASSWORD_AUTH:-true}"
       TRACE_DATABASE_URL: postgresql+psycopg://${TRACE_DATABASE_USER:-trace}:${TRACE_DATABASE_PASSWORD:-${POSTGRES_PASSWORD}}@db:5432/trace
       TRACE_CRIMINAL_RECORDS_URL: http://criminal-records:8010
       TRACE_PROCESSES_DIR: /processes

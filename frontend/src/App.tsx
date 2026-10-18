@@ -1,32 +1,34 @@
-import { Navigate, Outlet, Route, Routes, useParams } from 'react-router'
+import { lazy, Suspense } from 'react'
+import { Navigate, Outlet, Route, Routes, useParams, useLocation } from 'react-router'
 import { AppShell } from './components/shell/AppShell'
-import { ErrorNotice } from './components/shell/Notice'
-import { Button } from './components/shell/Controls'
-import { Inbox } from './routes/Inbox'
-import { Instances } from './routes/Instances'
-import { Landing } from './routes/Landing'
-import { Docs } from './routes/Docs'
-import { NewProcess } from './routes/NewProcess'
-import { Process } from './routes/Process'
-import { ProcessChat } from './routes/ProcessChat'
-import { Processes } from './routes/Processes'
-import { Queue } from './routes/Queue'
-import { Rule } from './routes/Rule'
-import { Settings } from './routes/Settings'
-import { Definition } from './routes/Definition'
+import { Login } from './routes/Login'
 import { MailNotifications } from './components/process/MailNotifications'
-import { Metrics } from './routes/Metrics'
-import { ProcessSettings } from './routes/ProcessSettings'
 import { paths } from './lib/paths'
 import { useSession } from './state/session'
+const Inbox = lazy(() => import('./routes/Inbox').then(m => ({ default: m.Inbox })))
+const Instances = lazy(() => import('./routes/Instances').then(m => ({ default: m.Instances })))
+const Landing = lazy(() => import('./routes/Landing').then(m => ({ default: m.Landing })))
+const Knowledge = lazy(() => import('./routes/Knowledge').then(m => ({ default: m.Knowledge })))
+const Docs = lazy(() => import('./routes/Docs').then(m => ({ default: m.Docs })))
+const NewProcess = lazy(() => import('./routes/NewProcess').then(m => ({ default: m.NewProcess })))
+const Process = lazy(() => import('./routes/Process').then(m => ({ default: m.Process })))
+const ProcessChat = lazy(() => import('./routes/ProcessChat').then(m => ({ default: m.ProcessChat })))
+const Processes = lazy(() => import('./routes/Processes').then(m => ({ default: m.Processes })))
+const Queue = lazy(() => import('./routes/Queue').then(m => ({ default: m.Queue })))
+const Rule = lazy(() => import('./routes/Rule').then(m => ({ default: m.Rule })))
+const Settings = lazy(() => import('./routes/Settings').then(m => ({ default: m.Settings })))
+const Definition = lazy(() => import('./routes/Definition').then(m => ({ default: m.Definition })))
+const Metrics = lazy(() => import('./routes/Metrics').then(m => ({ default: m.Metrics })))
+const ProcessSettings = lazy(() => import('./routes/ProcessSettings').then(m => ({ default: m.ProcessSettings })))
 
 export default function App() {
   return (
+    <Suspense fallback={<div role="status" className="p-8 text-sm text-muted">Cargando…</div>}>
     <Routes>
-      <Route path="/" element={<Landing />} />
+      <Route path="/" element={<Home />} />
       <Route path="/docs" element={<Docs />} />
       <Route path="/docs/:slug" element={<Docs />} />
-      <Route path="/login" element={<Navigate to={paths.processes} replace />} />
+      <Route path="/login" element={<Login />} />
       <Route element={<Console />}>
         <Route path="/processes" element={<Processes />} />
         <Route path="/processes/new" element={<NewProcess />} />
@@ -37,6 +39,7 @@ export default function App() {
         <Route path="/processes/:processId/definition/*" element={<Definition />} />
         <Route path="/processes/:processId/review" element={<Queue />} />
         <Route path="/processes/:processId/reception" element={<Legacy to={paths.processSettings} />} />
+        <Route path="/processes/:processId/documentation" element={<Knowledge />} />
         <Route path="/processes/:processId/metrics" element={<Metrics />} />
         <Route path="/processes/:processId/settings" element={<ProcessSettings />} />
         <Route path="/processes/:processId/instances" element={<Instances />} />
@@ -51,20 +54,21 @@ export default function App() {
       </Route>
       <Route path="*" element={<Navigate to={paths.processes} replace />} />
     </Routes>
+    </Suspense>
   )
 }
 
 function Console() {
-  const { user, identityError, restoreDefaultIdentity } = useSession()
+  const { user, identityError, mode, loading } = useSession()
+  const location = useLocation()
+  if (loading) return <Login />
+  if (!user && mode === 'password' && !identityError) return <Navigate to={`/login?next=${encodeURIComponent(location.pathname + location.search)}`} replace />
+  if (!user) return <Login />
   return (
     <AppShell>
       <div className="relative flex min-h-0 flex-1 flex-col">
         <MailNotifications />
-        {user ? <Outlet /> : identityError ? (
-          <ErrorNotice error={identityError} action={
-            <Button onClick={restoreDefaultIdentity}>Usar identidad predeterminada</Button>
-          } />
-        ) : null}
+        <Outlet />
       </div>
     </AppShell>
   )
@@ -73,4 +77,9 @@ function Console() {
 function Legacy({ to }: { to: (id: number | string) => string }) {
   const processId = useParams().processId
   return <Navigate to={to(processId ?? '')} replace />
+}
+
+function Home() {
+  const { mode, loading } = useSession()
+  return loading || mode !== 'identity' ? <Login /> : <Landing />
 }

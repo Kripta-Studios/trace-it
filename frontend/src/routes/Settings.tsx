@@ -1,10 +1,11 @@
-import { useState } from 'react'
+import { useState, type FormEvent } from 'react'
 import { useMutation, useQuery } from '@tanstack/react-query'
 import { Check } from 'lucide-react'
 import { useSearchParams } from 'react-router'
 import { api } from '../api/client'
+import { post } from '../api/http'
 import { keys } from '../api/queries'
-import { Segmented, Select } from '../components/shell/Controls'
+import { Button, Segmented, Select } from '../components/shell/Controls'
 import { SettingsSection } from '../components/shell/SettingsSection'
 import { UseCaseModels } from '../components/process/UseCaseModels'
 import { LanguageSelect } from '../components/shell/LanguageSelect'
@@ -51,6 +52,47 @@ export function Settings() {
 }
 
 function Identity() {
+  const { mode } = useSession()
+  return mode === 'password' ? <Account /> : <LegacyIdentity />
+}
+
+function Account() {
+  const { user, signOut, isManager } = useSession()
+  const logout = useMutation({ mutationFn: signOut })
+  return <SettingsSection title="Tu cuenta" description="Las acciones quedan registradas con tu identidad.">
+    <p className="text-sm font-medium">{user?.name}</p>
+    <p className="mt-1 text-sm text-muted">{user?.email} · {user ? t(`roles.${user.role}`) : ''}</p>
+    <Button className="mt-4" disabled={logout.isPending} onClick={() => logout.mutate()}>Cerrar sesión</Button>
+    {logout.isError ? <ErrorNotice error={logout.error} /> : null}
+    {isManager ? <CreateAccount /> : null}
+  </SettingsSection>
+}
+
+function CreateAccount() {
+  const [name, setName] = useState('')
+  const [email, setEmail] = useState('')
+  const [password, setPassword] = useState('')
+  const [role, setRole] = useState('operator')
+  const create = useMutation({
+    mutationFn: () => post('/users', { name: name.trim(), email: email.trim(), password, role }),
+    onSuccess: () => { setName(''); setEmail(''); setPassword('') },
+  })
+  function submit(event: FormEvent) { event.preventDefault(); create.mutate() }
+  const field = 'mt-1 block w-full rounded-lg border border-line bg-canvas px-3 py-2 text-sm'
+  return <form onSubmit={submit} className="mt-8 max-w-md space-y-4 border-t border-line pt-6">
+    <h3 className="text-sm font-medium">Crear cuenta del equipo</h3>
+    <p className="text-xs leading-5 text-muted">El equipo comparte los procesos y documentos de este espacio. Los responsables también pueden configurar y publicar procesos.</p>
+    <label className="block text-sm">Nombre<input required maxLength={100} value={name} onChange={e => setName(e.target.value)} className={field} /></label>
+    <label className="block text-sm">Correo de la cuenta<input required type="email" autoComplete="off" value={email} onChange={e => setEmail(e.target.value)} className={field} /></label>
+    <label className="block text-sm">Contraseña inicial<input required type="password" minLength={12} maxLength={1024} autoComplete="new-password" value={password} onChange={e => setPassword(e.target.value)} className={field} /></label>
+    <label className="block text-sm">Permisos<select value={role} onChange={e => setRole(e.target.value)} className={field}><option value="operator">Operador</option><option value="manager">Responsable</option></select></label>
+    {create.isError ? <ErrorNotice error={create.error} /> : null}
+    {create.isSuccess ? <p role="status" className="text-sm">Cuenta creada. Entrega la contraseña a su titular por un canal privado.</p> : null}
+    <Button type="submit" disabled={create.isPending || !name.trim() || !email.trim()}>{create.isPending ? 'Creando…' : 'Crear cuenta'}</Button>
+  </form>
+}
+
+function LegacyIdentity() {
   const { user, signIn } = useSession()
   const users = useQuery({ queryKey: keys.users, queryFn: () => api.listUsers() })
   const switchUser = useMutation({ mutationFn: (email: string) => signIn(email) })

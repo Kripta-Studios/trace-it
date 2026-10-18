@@ -63,6 +63,7 @@ async function fixture(page: Page, conversation: 'none' | 'empty' | 'proposed') 
     const path = url.pathname.split('/api')[1]
     if (request.method() !== 'GET' && path !== '/login') writes.push(path)
     let body: unknown = []
+    if (path === '/auth-config') return route.fulfill({ json: { mode: 'identity', session_hours: 12 } })
     if (path === '/login') body = { id: 1, name: 'Manager', email: 'manager@test.invalid', role: 'manager' }
     if (path === '/processes') body = [process]
     if (path === '/processes/6') body = process

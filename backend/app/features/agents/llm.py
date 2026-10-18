@@ -22,7 +22,8 @@ from pydantic_ai.exceptions import FallbackExceptionGroup, ModelAPIError, UserEr
 from pydantic_ai.messages import ModelMessage, ModelResponse, RetryPromptPart
 from pydantic_ai.models import Model
 from pydantic_ai.models.fallback import FallbackModel
-from pydantic_ai.models.openai import OpenAIChatModel
+from pydantic_ai.models.openai import OpenAIChatModel, OpenAIResponsesModel
+from pydantic_ai.profiles.openai import OpenAIModelProfile, openai_model_profile
 from pydantic_ai.providers.openai import OpenAIProvider
 from pydantic_ai.usage import UsageLimits
 
@@ -128,6 +129,25 @@ def resolve(
                 os.environ.get("LOCAL_LLM_API_KEY") or "local",
                 retries,
             ),
+        )
+    if isinstance(model, str) and model.startswith("openai-responses:"):
+        name = model.removeprefix("openai-responses:")
+        profile = None
+        if name.startswith("gpt-6-luna"):
+            # The installed SDK predates Luna's profile. Keep explicit settings intact,
+            # but let its standard reasoning guard omit incompatible sampling fields.
+            profile = OpenAIModelProfile(
+                **{
+                    **openai_model_profile(name),
+                    "openai_supports_reasoning": True,
+                    "openai_reasoning_enabled_by_default": True,
+                    "openai_supports_reasoning_effort_none": True,
+                }
+            )
+        return OpenAIResponsesModel(
+            name,
+            provider=_openai(None, os.environ.get("OPENAI_API_KEY"), retries),
+            profile=profile,
         )
     if isinstance(model, str) and model.startswith("helmcode:"):
         provider = _openai(settings.helmcode_base_url, os.environ.get("HELMCODE_API_KEY"), retries)

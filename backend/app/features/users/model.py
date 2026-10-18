@@ -16,4 +16,6 @@ class User(Base):
     name: Mapped[str]
     email: Mapped[str] = mapped_column(String, unique=True)
     role: Mapped[str] = mapped_column(default="operator")
+    password_hash: Mapped[str | None]
+    session_version: Mapped[int] = mapped_column(default=0, server_default="0")
     created_at: Mapped[created_at]

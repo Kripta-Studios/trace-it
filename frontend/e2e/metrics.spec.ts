@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test'
-import { resolve } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { build } from 'vite'
 
 // Browser interaction fixtures; accounting and time reconciliation use real PostgreSQL
@@ -52,6 +52,7 @@ async function fixture(page: Page) {
       symbols: [],
     }
     let body: unknown = []
+    if (path === '/auth-config') return route.fulfill({ json: { mode: 'identity', session_hours: 12 } })
     if (path === '/login')
       body = { id: 1, email: 'metrics@test.invalid', name: 'Metrics reviewer', role: 'manager' }
     if (path === '/processes') body = [process]
@@ -302,7 +303,7 @@ test('Sankey conserves each measure across areas, tasks and shared models', asyn
     configFile: false, logLevel: 'silent',
     build: {
       write: false,
-      lib: { entry: resolve('e2e/fixtures/metrics-entry.ts'), name: 'metricsTest', formats: ['iife'] },
+      lib: { entry: fileURLToPath(new URL('./fixtures/metrics-entry.ts', import.meta.url)), name: 'metricsTest', formats: ['iife'] },
     },
   })
   const output = (Array.isArray(built) ? built[0] : built).output

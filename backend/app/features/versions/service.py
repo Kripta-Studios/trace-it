@@ -197,7 +197,9 @@ def check_configuration(snapshot: dict) -> None:
         name: SourceSchema.model_validate(row)
         for name, row in snapshot.get("source_schemas", {}).items()
     }
-    if connectors.keys() != schemas.keys():
+    # Canonical schemas also describe workbook/manual sources and pack-level connectors.
+    # Only connectors embedded in this snapshot require a matching embedded schema.
+    if not connectors.keys() <= schemas.keys():
         raise ValueError("Every published connector needs exactly one source schema")
     for name, connector in connectors.items():
         missing = set(schemas[name].required) - connector.fields.keys()

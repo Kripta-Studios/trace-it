@@ -19,6 +19,7 @@ export const paths = {
   definitionContext: (id: number | string) => `/processes/${id}/definition/contexto`,
   definitionInputs: (id: number | string) => `/processes/${id}/definition/inputs`,
   definitionSources: (id: number | string) => `/processes/${id}/definition/fuentes`,
+  documentation: (id: number | string) => `/processes/${id}/documentation`,
   knowledge: (id: number | string) => `/processes/${id}/definition/fuentes`,
   versions: (id: number | string) => `/processes/${id}/definition/manual`,
   review: (id: number | string) => `/processes/${id}/review`,

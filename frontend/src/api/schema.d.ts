@@ -628,8 +628,42 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Find the user by email. Send its id as `X-User-Id` afterwards */
+        /** Sign in; password deployments issue a secure browser session cookie */
         post: operations["login"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/auth-config": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Browser authentication mode */
+        get: operations["getAuthConfig"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/logout": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** End browser sessions */
+        post: operations["logout"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1987,6 +2021,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/processes/{process_id}/knowledge": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Find persisted source documents by literal filename or extracted text */
+        get: operations["searchProcessDocuments"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/processes/{process_id}/alerts": {
         parameters: {
             query?: never;
@@ -2826,6 +2877,21 @@ export interface components {
              * @default true
              */
             sync_before_run: boolean;
+        };
+        /** CreateUserIn */
+        CreateUserIn: {
+            /** Name */
+            name: string;
+            /** Email */
+            email: string;
+            /**
+             * Role
+             * @default operator
+             * @enum {string}
+             */
+            role: "manager" | "operator";
+            /** Password */
+            password?: string | null;
         };
         /** CreatedCheck */
         CreatedCheck: {
@@ -4130,6 +4196,35 @@ export interface components {
             pending: components["schemas"]["Pending"];
             version: components["schemas"]["VersionRef"] | null;
         };
+        /** KnowledgeDocument */
+        KnowledgeDocument: {
+            /** Instance Id */
+            instance_id: number;
+            /** Name */
+            name: string;
+            /** Status */
+            status: string;
+            /**
+             * Uploaded At
+             * Format: date-time
+             */
+            uploaded_at: string;
+            /** Has Text */
+            has_text: boolean;
+            /** Has Evidence */
+            has_evidence: boolean;
+            /** Excerpt */
+            excerpt: string;
+        };
+        /** KnowledgePage */
+        KnowledgePage: {
+            /** Items */
+            items: components["schemas"]["KnowledgeDocument"][];
+            /** Next Cursor */
+            next_cursor: number | null;
+            /** Query */
+            query: string;
+        };
         /** LegacyMailAudit */
         LegacyMailAudit: {
             /** Id */
@@ -4214,6 +4309,8 @@ export interface components {
         LoginIn: {
             /** Email */
             email: string;
+            /** Password */
+            password?: string | null;
         };
         /** MailActivityFeed */
         MailActivityFeed: {
@@ -7910,7 +8007,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["UserIn"];
+                "application/json": components["schemas"]["CreateUserIn"];
             };
         };
         responses: {
@@ -7971,6 +8068,46 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
                 };
+            };
+        };
+    };
+    getAuthConfig: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+        };
+    };
+    logout: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };
@@ -10717,6 +10854,43 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AdoptionOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    searchProcessDocuments: {
+        parameters: {
+            query?: {
+                query?: string;
+                limit?: number;
+                cursor?: number | null;
+            };
+            header?: {
+                "x-user-id"?: number | null;
+            };
+            path: {
+                process_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["KnowledgePage"];
                 };
             };
             /** @description Validation Error */

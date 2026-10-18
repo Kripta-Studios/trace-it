@@ -120,12 +120,18 @@ def extraction_defaults() -> ExtractionSettings:
     config = IngestionSettings()
     chain = config.visual_chain()
     vision = f"{chain[0][0]}:{chain[0][1]}" if chain else None
+    text_models = {
+        "compatible": config.text_model,
+        "jev": config.jev_model,
+        "helmcode": config.helmcode_text_model,
+    }
     judge = next(
         (
-            f"{provider}:{config.jev_model if provider == 'jev' else config.helmcode_text_model}"
+            f"{provider}:{text_models[provider]}"
             for provider in config.text_providers
             if (provider == "jev" and config.jev_api_key)
             or (provider == "helmcode" and config.helmcode_api_key)
+            or (provider == "compatible" and config.text_url and config.text_model)
         ),
         None,
     )
@@ -256,7 +262,14 @@ def ingestion_settings(config: ExecutionSettings, base: IngestionSettings) -> In
         else (provider,)
         if provider in {"gemini", "helmcode"}
         else (),
-        text_providers=(judge_provider,) if judge_provider in {"jev", "helmcode"} else (),
+        text_providers=(judge_provider,)
+        if judge_provider in {"jev", "helmcode", "compatible"}
+        else (),
+        text_url=config.compatible_endpoint if judge_provider == "compatible" else None,
+        text_model=judge_model if judge_provider == "compatible" else None,
+        text_api_key=(base.text_api_key or base.vlm_api_key)
+        if judge_provider == "compatible"
+        else None,
         vlm_url=config.local_endpoint
         if provider == "local"
         else config.compatible_endpoint
@@ -270,11 +283,7 @@ def ingestion_settings(config: ExecutionSettings, base: IngestionSettings) -> In
         vision_max_tokens=extraction.vision_max_tokens,
         jev_model=judge_model,
         jev_api_key=base.jev_api_key if judge_provider == "jev" else None,
-        judge_url=config.local_endpoint
-        if judge_provider == "local"
-        else config.compatible_endpoint
-        if judge_provider == "compatible"
-        else None,
+        judge_url=config.local_endpoint if judge_provider == "local" else None,
         judge_api_key=os.getenv("LOCAL_LLM_API_KEY")
         if judge_provider == "local"
         else base.vlm_api_key,

@@ -5,32 +5,67 @@ const ease = [0.23, 1, 0.32, 1] as const
 
 /** Open overlays, innermost last: Escape closes only the one on top. */
 const stack: symbol[] = []
+let originalOverflow = ''
+const focusable = 'a[href], button, input, select, textarea, [tabindex]:not([tabindex="-1"])'
 
 export function Overlay({
   onClose,
   children,
   align = 'center',
   size = 'md',
+  label,
 }: {
   onClose: () => void
   children: ReactNode
   align?: 'center' | 'right'
   size?: 'md' | 'lg' | 'xl'
+  label?: string
 }) {
   const close = useRef(onClose)
+  const panel = useRef<HTMLDivElement>(null)
   useEffect(() => {
     close.current = onClose
   })
   useEffect(() => {
     const id = Symbol('overlay')
+    const previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null
+    if (stack.length === 0) {
+      originalOverflow = document.body.style.overflow
+      document.body.style.overflow = 'hidden'
+    }
     stack.push(id)
+    const controls = () => Array.from(panel.current?.querySelectorAll<HTMLElement>(focusable) ?? [])
+      .filter(element => !element.matches(':disabled, [hidden], [aria-hidden="true"]') && element.tabIndex >= 0 && element.getClientRects().length > 0)
+    ;(controls()[0] ?? panel.current)?.focus()
     const onKey = (event: KeyboardEvent) => {
-      if (event.key === 'Escape' && stack.at(-1) === id) close.current()
+      if (stack.at(-1) !== id) return
+      if (event.key === 'Escape') {
+        event.preventDefault()
+        close.current()
+      }
+      if (event.key === 'Tab') {
+        const items = controls()
+        const first = items[0]
+        const last = items.at(-1)
+        if (!first) {
+          event.preventDefault()
+          panel.current?.focus()
+        } else if (event.shiftKey && (document.activeElement === first || !items.includes(document.activeElement as HTMLElement))) {
+          event.preventDefault()
+          last?.focus()
+        } else if (!event.shiftKey && (document.activeElement === last || !items.includes(document.activeElement as HTMLElement))) {
+          event.preventDefault()
+          first.focus()
+        }
+      }
     }
     window.addEventListener('keydown', onKey)
     return () => {
       window.removeEventListener('keydown', onKey)
+      const wasTop = stack.at(-1) === id
       stack.splice(stack.indexOf(id), 1)
+      if (stack.length === 0) document.body.style.overflow = originalOverflow
+      if (wasTop && previousFocus?.isConnected) previousFocus.focus()
     }
   }, [])
 
@@ -44,6 +79,11 @@ export function Overlay({
       onClick={onClose}
     >
       <motion.div
+        ref={panel}
+        role="dialog"
+        aria-modal="true"
+        aria-label={label}
+        tabIndex={-1}
         initial={
           align === 'right'
             ? { x: 24, opacity: 0.6 }

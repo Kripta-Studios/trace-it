@@ -497,7 +497,7 @@ function SuggestionDialog({
   const why = (payload?.why ?? []).slice(0, 3)
 
   return (
-    <div role="dialog" aria-modal="true" className="rounded-[20px] bg-surface p-5 shadow-pop ring-1 ring-line">
+    <div className="rounded-[20px] bg-surface p-5 shadow-pop ring-1 ring-line">
       <div className="flex items-start justify-between gap-3">
         <p className="text-[12px] text-muted">
           Sugerencia del asistente

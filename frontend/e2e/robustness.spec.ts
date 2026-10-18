@@ -1,4 +1,7 @@
 import { expect, test } from '@playwright/test'
+import { renderToStaticMarkup } from 'react-dom/server'
+import { createElement } from 'react'
+import { highlight } from '../src/lib/highlight'
 import { dayKey, parseDay, triage } from '../src/lib/urgency'
 import type { InstanceOut } from '../src/api/contracts'
 
@@ -24,14 +27,14 @@ test('invoice terms preserve calendar dates across both daylight-saving transiti
 
 test('documentation stays inside the mobile viewport', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 })
-  await page.route('**/api/**', route => route.request().url().includes('/src/') ? route.continue() : route.fulfill({ json: [] }))
+  await page.route('**/api/**', route => route.request().url().includes('/src/') ? route.continue() : route.fulfill({ json: route.request().url().endsWith('/auth-config') ? { mode: 'identity', session_hours: 12 } : [] }))
   await page.goto('docs/motor')
   await expect(page.getByRole('heading', { name: 'Cinco decisiones.' })).toBeVisible()
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390)
 })
 
 test('both themes resolve icons within the deployment prefix', async ({ page, request }) => {
-  await page.route('**/api/**', route => route.request().url().includes('/src/') ? route.continue() : route.fulfill({ json: [] }))
+  await page.route('**/api/**', route => route.request().url().includes('/src/') ? route.continue() : route.fulfill({ json: route.request().url().endsWith('/auth-config') ? { mode: 'identity', session_hours: 12 } : [] }))
   for (const theme of ['light', 'dark']) {
     await page.addInitScript(value => localStorage.setItem('trace.tema', value), theme)
     await page.goto('docs/motor')
@@ -43,4 +46,14 @@ test('both themes resolve icons within the deployment prefix', async ({ page, re
       expect(result.headers()['content-type']).toContain('image/png')
     }
   }
+})
+
+
+test('document text search handles thousands of matches without exhausting the stack', () => {
+  const text = 'Abc '.repeat(15_000)
+  const html = renderToStaticMarkup(createElement('pre', null, highlight(text, 'aBc')))
+  expect(html.match(/<mark>/g)?.length).toBe(15_000)
+  expect(html.replace(/<[^>]*>/g, '')).toBe(text)
+  expect(highlight(text, '  ')).toBe(text)
+  expect(highlight('Invoice [123]', '[123]')).toBeTruthy()
 })

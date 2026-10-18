@@ -5,6 +5,7 @@ import { api } from '../../api/client'
 import type { ExtractionResult } from '../../api/contracts'
 import { keys } from '../../api/queries'
 import { cn } from '../../lib/cn'
+import { highlight } from '../../lib/highlight'
 import { symbolLabel } from '../../lib/symbols'
 import { ErrorNotice } from '../shell/Notice'
 import { PdfEvidence } from './PdfEvidence'
@@ -254,20 +255,6 @@ function IconBtn({
     >
       {children}
     </button>
-  )
-}
-
-function highlight(text: string, query: string): ReactNode {
-  const q = query.trim()
-  if (!q) return text
-  const index = text.toLowerCase().indexOf(q.toLowerCase())
-  if (index < 0) return text
-  return (
-    <>
-      {text.slice(0, index)}
-      <mark>{text.slice(index, index + q.length)}</mark>
-      {highlight(text.slice(index + q.length), query)}
-    </>
   )
 }
 

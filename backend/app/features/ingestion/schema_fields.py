@@ -10,6 +10,7 @@ from pathlib import Path
 from app.common import prompts
 from app.common.extraction import Candidate, Evidence, TextLine
 from app.common.normalization import clean_text, fold, invoice_date
+from app.features.ingestion.ocr.generation import chat_generation
 from app.features.ingestion.ocr.http import ProviderHTTP
 
 from .extraction_plan import ExtractionField
@@ -341,8 +342,7 @@ class SchemaFieldReader:
                         }
                         if provider == "gemini"
                         else {
-                            "temperature": 0,
-                            "max_tokens": self._max_tokens(),
+                            **chat_generation(model, self._max_tokens()),
                             **(
                                 {
                                     "reasoning_effort": "none",
@@ -485,7 +485,7 @@ class SchemaFieldReader:
                 else self.settings.helmcode_api_key
             )
             headers = {"Authorization": "Bearer " + token} if token else {}
-            generation = {"temperature": 0, "max_tokens": max_tokens}
+            generation = chat_generation(model, max_tokens)
             if provider == "helmcode":
                 generation.update(reasoning_effort="none", response_format={"type": "json_object"})
             body = {

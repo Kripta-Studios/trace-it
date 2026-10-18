@@ -1,6 +1,6 @@
 from typing import Literal
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field, SecretStr
 
 
 class UserIn(BaseModel):
@@ -14,4 +14,9 @@ class UserOut(UserIn):
 
 
 class LoginIn(BaseModel):
-    email: str
+    email: str = Field(min_length=1, max_length=320)
+    password: SecretStr | None = Field(default=None, max_length=1024)
+
+
+class CreateUserIn(UserIn):
+    password: SecretStr | None = Field(default=None, min_length=12, max_length=1024)

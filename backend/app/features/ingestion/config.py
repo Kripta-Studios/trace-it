@@ -75,6 +75,11 @@ class Settings:
     )
     # Explicit versioned readers override the deployment's default chain.
     visual_readers: tuple[tuple[str, str], ...] | None = None
+    text_url: str | None = field(default_factory=lambda: os.getenv("TRACEPAY_TEXT_URL"))
+    text_model: str | None = field(default_factory=lambda: os.getenv("TRACEPAY_TEXT_MODEL"))
+    text_api_key: str | None = field(
+        default_factory=lambda: os.getenv("TRACEPAY_TEXT_API_KEY"), repr=False
+    )
     text_providers: tuple[str, ...] = field(
         default_factory=lambda: _providers("TRACEPAY_TEXT_PROVIDERS", "jev,helmcode")
     )
@@ -106,7 +111,7 @@ class Settings:
             raise ValueError("TRACEPAY_PROVIDER_TIMEOUT_S must be positive")
         if set(self.vision_providers) - {"compatible", "gemini", "helmcode"}:
             raise ValueError("Unknown TRACEPAY_VISION_PROVIDERS entry")
-        if set(self.text_providers) - {"jev", "helmcode"}:
+        if set(self.text_providers) - {"jev", "helmcode", "compatible"}:
             raise ValueError("Unknown TRACEPAY_TEXT_PROVIDERS entry")
         if set(self.helmcode_vision_models) - {"qwen3.6", "gemma4"}:
             raise ValueError("Helmcode vision supports qwen3.6 and gemma4")
@@ -125,11 +130,14 @@ class Settings:
             "text": [
                 {
                     "provider": provider,
-                    "model": self.jev_model if provider == "jev" else self.helmcode_text_model,
+                    "model": self.text_model
+                    if provider == "compatible"
+                    else (self.jev_model if provider == "jev" else self.helmcode_text_model),
                 }
                 for provider in self.text_providers
                 if (provider == "jev" and self.jev_api_key)
                 or (provider == "helmcode" and self.helmcode_api_key)
+                or (provider == "compatible" and self.text_url and self.text_model)
             ],
         }
 

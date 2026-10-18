@@ -1,3 +1,5 @@
+import pytest
+
 from app.features.processes import draft_compilation
 from app.features.processes.draft_schemas import DraftPlan
 from app.features.versions import service as versions
@@ -107,3 +109,16 @@ def test_connector_must_map_every_required_canonical_field():
         assert "missing_field" in str(error)
     else:
         raise AssertionError("unmapped required field was accepted")
+
+
+def test_published_connector_without_a_schema_is_still_rejected():
+    snapshot = draft_compilation.candidate(
+        connector_plan(),
+        [],
+        {"process": {"id": 0, "use_case_id": 0}, "rules": [], "agents": {}, "guidance": {}},
+    )
+    snapshot["source_schemas"] = {}
+    with pytest.raises(
+        ValueError, match="Every published connector needs exactly one source schema"
+    ):
+        versions.check_configuration(snapshot)

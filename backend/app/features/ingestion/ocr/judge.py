@@ -6,6 +6,7 @@ from pathlib import Path
 from app.common import prompts
 
 from .errors import ProviderUnavailable, note_provider_failure, provider_on_cooldown
+from .generation import chat_generation
 from .http import ProviderHTTP
 from .journal import record_response, recorded_call, retry_after
 
@@ -28,6 +29,7 @@ class TextJudge:
             provider
             for provider in self.settings.text_providers
             if (provider == "jev" and self.settings.jev_api_key and self.settings.jev_model)
+            or (provider == "compatible" and self.settings.text_url and self.settings.text_model)
             or (
                 provider == "helmcode"
                 and self.settings.helmcode_api_key
@@ -47,20 +49,11 @@ class TextJudge:
             "chain": [
                 {
                     "provider": provider,
-                    "endpoint": URL
-                    if provider == "jev"
-                    else self.settings.helmcode_url.rstrip("/") + "/chat/completions",
+                    "endpoint": URL if provider == "jev" else self._chat_config(provider)[0],
                     "model": self.settings.jev_model
                     if provider == "jev"
-                    else self.settings.helmcode_text_model,
-                    "generation": {
-                        "temperature": 0,
-                        "max_tokens": self.settings.judge_max_tokens,
-                        "reasoning_effort": "none",
-                        "response_format": {"type": "json_object"},
-                    }
-                    if provider == "helmcode"
-                    else None,
+                    else self._chat_config(provider)[1],
+                    "generation": None if provider == "jev" else self._chat_generation(provider),
                 }
                 for provider in self._chain()
             ],
@@ -99,16 +92,14 @@ class TextJudge:
         failure = None
         namespace = str(self.settings.data_dir)
         for index, provider in enumerate(self._chain()):
-            model = (
-                self.settings.jev_model if provider == "jev" else self.settings.helmcode_text_model
-            )
+            model = self.settings.jev_model if provider == "jev" else self._chat_config(provider)[1]
             if provider_on_cooldown(provider, model, namespace):
                 continue
             try:
                 data = (
                     self._select_jev(payload, fallback=index > 0)
                     if provider == "jev"
-                    else self._select_helm(payload, questions, fallback=index > 0)
+                    else self._select_chat(provider, payload, questions, fallback=index > 0)
                 )
                 break
             except ProviderUnavailable as exc:
@@ -168,15 +159,30 @@ class TextJudge:
             force=self.settings.ocr_force_recompute,
         )
 
-    def _select_helm(self, payload, questions, *, fallback=False):
-        model = self.settings.helmcode_text_model
-        endpoint = self.settings.helmcode_url.rstrip("/") + "/chat/completions"
-        generation = {
-            "temperature": 0,
-            "max_tokens": self.settings.judge_max_tokens,
-            "reasoning_effort": "none",
-            "response_format": {"type": "json_object"},
-        }
+    def _chat_config(self, provider):
+        if provider == "compatible":
+            return (
+                self.settings.text_url.rstrip("/") + "/chat/completions",
+                self.settings.text_model,
+                self.settings.text_api_key,
+            )
+        return (
+            self.settings.helmcode_url.rstrip("/") + "/chat/completions",
+            self.settings.helmcode_text_model,
+            self.settings.helmcode_api_key,
+        )
+
+    def _chat_generation(self, provider):
+        model = self._chat_config(provider)[1]
+        generation = chat_generation(model, self.settings.judge_max_tokens)
+        generation["response_format"] = {"type": "json_object"}
+        if provider == "helmcode":
+            generation["reasoning_effort"] = "none"
+        return generation
+
+    def _select_chat(self, provider, payload, questions, *, fallback=False):
+        endpoint, model, token = self._chat_config(provider)
+        generation = self._chat_generation(provider)
         body = {
             "model": model,
             **generation,
@@ -205,10 +211,10 @@ class TextJudge:
         def validate(data):
             answers = data.get("answers") if isinstance(data, dict) else None
             if not isinstance(answers, dict) or set(answers) != set(questions):
-                raise ValueError("Invalid Helmcode text selections")
+                raise ValueError("Invalid text selections")
             for name, value in answers.items():
                 if not isinstance(value, str) or value not in questions[name]["criteria"]:
-                    raise ValueError("Invented Helmcode candidate")
+                    raise ValueError("Invented text candidate")
             return {
                 "model": model,
                 "usage": data.get("usage", {}),
@@ -222,27 +228,27 @@ class TextJudge:
                 mark_network_attempt()
                 response = client.post(
                     endpoint,
-                    headers={"Authorization": "Bearer " + self.settings.helmcode_api_key},
+                    headers={"Authorization": "Bearer " + token} if token else {},
                     json=body,
                 )
-            record_response("helmcode", response.status_code, retry_after_s=retry_after(response))
+            record_response(provider, response.status_code, retry_after_s=retry_after(response))
             if not response.is_success:
-                raise ProviderUnavailable(f"Helmcode returned HTTP {response.status_code}")
+                raise ProviderUnavailable(f"{provider} returned HTTP {response.status_code}")
             data = response.json()
-            record_response("helmcode", response.status_code, data)
+            record_response(provider, response.status_code, data)
             choice = data["choices"][0]
             if choice.get("finish_reason") != "stop":
-                raise ValueError("Incomplete Helmcode text response")
+                raise ValueError("Incomplete text response")
             content = choice["message"]["content"]
             if not isinstance(content, str) or len(content) > 20000:
-                raise ValueError("Invalid Helmcode text response")
+                raise ValueError("Invalid text response")
             result = json.loads(content)
             validate(result)
             result["usage"] = data.get("usage", {})
             return result
 
         data = recorded_call(
-            self.settings.data_dir / "provider-journal" / "helmcode",
+            self.settings.data_dir / "provider-journal" / provider,
             {
                 "endpoint": endpoint,
                 "model": model,
@@ -251,7 +257,7 @@ class TextJudge:
                 "generation": generation,
             },
             call,
-            provider="helmcode",
+            provider=provider,
             model=model,
             operation="text_selection",
             fallback=fallback,
@@ -263,8 +269,7 @@ class TextJudge:
         """The local/compatible judge can select existing candidates, never create facts."""
         body = {
             "model": self.settings.jev_model,
-            "temperature": 0,
-            "max_tokens": self.settings.judge_max_tokens,
+            **chat_generation(self.settings.jev_model, self.settings.judge_max_tokens),
             "messages": [
                 {
                     "role": "system",

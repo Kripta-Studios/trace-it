@@ -157,7 +157,7 @@ export function Process() {
   const startBlocked =
     compiling > 0
       ? 'El motor no arranca mientras hay reglas compilando'
-      : active === 0
+      : active === 0 && !latestPublished
         ? 'Hace falta al menos una regla activa'
         : undefined
 

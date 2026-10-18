@@ -36,6 +36,7 @@ async function preparedDraft(page: Page, history?: 'incomplete' | 'absent') {
     if (new URL(request.url()).pathname.includes('/src/')) return route.continue()
     const path = new URL(request.url()).pathname.split('/api')[1]
     let body: unknown = []
+    if (path === '/auth-config') return route.fulfill({ json: { mode: 'identity', session_hours: 12 } })
     if (path === '/login') body = { id: 1, name: 'Manager', email: 'manager@example.invalid', role: 'manager' }
     if (path === '/process-drafts') body = [session]
     if (path === '/process-drafts/901') body = session

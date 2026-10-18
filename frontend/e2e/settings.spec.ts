@@ -13,6 +13,7 @@ async function settingsFixture(page: Page) {
     if (request.url().includes('/src/')) return route.continue()
     const path = new URL(request.url()).pathname.split('/api')[1]
     let body: unknown = []
+    if (path === '/auth-config') return route.fulfill({ json: { mode: 'identity', session_hours: 12 } })
     if (path === '/login') {
       const email = request.postDataJSON().email
       logins.push(email)
@@ -156,10 +157,11 @@ test('custom process cases without invoice totals show an unavailable amount ins
   await expect(total).not.toContainText('0,00')
 })
 
-for (const screen of ['inbox', 'panel']) {
-  test(`${screen} batch runs only newly uploaded instances, leaving older pending documents alone`, async ({ page }) => {
+for (const screen of ['inbox', 'panel']) for (const defaultOnly of [false, true]) {
+  test(`${screen} ${defaultOnly ? 'published default-only' : 'active rules'} batch runs only newly uploaded instances, leaving older pending documents alone`, async ({ page }) => {
     await settingsFixture(page)
-    await page.route('**/api/processes/1/rules', route => route.fulfill({ json: [{ id: 1, status: 'active' }] }))
+    await page.route('**/api/processes/1/rules', route => route.fulfill({ json: defaultOnly ? [] : [{ id: 1, status: 'active' }] }))
+    if (defaultOnly) await page.route('**/api/processes/1/versions', route => route.fulfill({ json: [{ id: 1, number: 1, author: 'Manager', created_at: '2026-10-18T00:00:00Z', snapshot: { process: {}, rules: [] } }] }))
     await page.route('**/api/processes/1/execution', route => route.fulfill({ json: { revision: null, version_id: 1 } }))
     const pending = new Set([6, 7])
     await page.route('**/api/processes/1/summary', route => route.fulfill({ json: {
@@ -213,3 +215,42 @@ test('console exports the latest human resolution with trace data', async ({ pag
   expect(requests[0].searchParams.get('full')).toBe('true')
   expect(state.errors).toEqual([])
 })
+
+test('modal keyboard focus stays inside and returns to its trigger on Escape', async ({ page }) => {
+  await settingsFixture(page)
+  await page.route('**/api/processes/1/export*', route => route.fulfill({ status: 503, json: { code: 'export_failed', message: 'Keyboard test export outage' } }))
+  await page.goto('processes/1/instances')
+  const trigger = page.getByRole('button', { name: 'Exportar', exact: true })
+  await trigger.click()
+  const dialog = page.getByRole('dialog')
+  await expect(dialog).toBeVisible()
+  const dismiss = dialog.getByRole('button', { name: 'Entendido', exact: true })
+  await expect(dismiss).toBeFocused()
+  await page.keyboard.press('Tab')
+  await expect(dismiss).toBeFocused()
+  await page.keyboard.press('Shift+Tab')
+  await expect(dismiss).toBeFocused()
+  expect(await page.evaluate(() => document.body.style.overflow)).toBe('hidden')
+  await page.keyboard.press('Escape')
+  await expect(dialog).toHaveCount(0)
+  await expect(trigger).toBeFocused()
+  expect(await page.evaluate(() => document.body.style.overflow)).not.toBe('hidden')
+})
+
+for (const screen of ['inbox', 'panel']) {
+  test(`${screen} unpublished default-only draft cannot start document execution`, async ({ page }) => {
+    await settingsFixture(page)
+    await page.route('**/api/processes/1/execution', route => route.fulfill({ json: { revision: 1, version_id: null } }))
+    await page.route('**/api/processes/1/draft', route => route.fulfill({ json: { process_id: 1, revision: 1, snapshot: { process: {}, rules: [] }, validation: null } }))
+    let writes = 0
+    await page.route('**/api/processes/1/files', route => { writes++; return route.fulfill({ status: 500 }) })
+    await page.route('**/api/processes/1/run', route => { writes++; return route.fulfill({ status: 500 }) })
+    await page.goto(screen === 'inbox' ? 'processes/1' : 'processes/1/panel')
+    if (screen === 'panel') await page.getByRole('button', { name: 'Ejecutar', exact: true }).click()
+    await page.locator('input[type=file]').first().setInputFiles({ name: 'draft-only.pdf', mimeType: 'application/pdf', buffer: Buffer.from('%PDF-1.4 fixture') })
+    const dialog = page.getByRole('dialog')
+    await expect(dialog.getByText(screen === 'inbox' ? 'No hay reglas activas' : 'Hace falta al menos una regla activa', { exact: true })).toBeVisible()
+    await expect(dialog.getByRole('button', { name: 'Ejecutar 1', exact: true })).toBeDisabled()
+    expect(writes).toBe(0)
+  })
+}

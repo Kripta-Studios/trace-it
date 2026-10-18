@@ -2,16 +2,15 @@ import { Mail, UserRound } from 'lucide-react'
 import type { InstanceDetail } from '../../api/contracts'
 import { t } from '../../i18n'
 
-/** Mail provenance when available, with a fallback contact for the demo. */
+/** Only offer a contact action when the document has a recorded mail sender. */
 export function SenderContact({ instance }: { instance: InstanceDetail }) {
   const origin = instance.events.find((event) => event.data?.automation === 'mail_ingestion')
     ?.data?.mail_origin as Record<string, unknown> | undefined
   const sender = typeof origin?.sender === 'string' ? origin.sender : ''
   const address = sender.match(/[A-Z0-9.!#$%&'*+/=?^_`{|}~-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i)?.[0]
-  const email = address ?? 'billing@example.com'
-  const name = address
-    ? sender.replace(address, '').replace(/[<>"']/g, '').trim() || address
-    : t('reviewUi.billingTeam')
+  if (!address) return null
+  const email = address
+  const name = sender.replace(address, '').replace(/[<>"']/g, '').trim() || address
 
   return (
     <section aria-label={t('reviewUi.sender')} className="border-t border-hairline py-4">

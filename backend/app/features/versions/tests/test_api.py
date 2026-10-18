@@ -15,6 +15,7 @@ from app.features.rules.model import Rule
 from app.features.rules.service import rule_hash
 from app.features.sources.model import Source
 from app.features.versions import configuration
+from app.features.versions.model import ProcessDraft
 from tests.support.users import anonymous
 
 CODE = """def evaluate(instance, sources, others):
@@ -102,6 +103,23 @@ async def publish(api, pid, headers):
     )
     assert result.status_code == 201, result.text
     return result.json()
+
+
+async def test_manual_source_schema_publishes_without_an_http_connector():
+    async with client() as api:
+        pid, headers, _, _ = await seed(api)
+        schema = {"required": ["order"], "optional": [], "sync_before_run": False}
+        async with session_factory() as session:
+            draft = await session.get(ProcessDraft, pid)
+            draft.snapshot = {**draft.snapshot, "source_schemas": {"paid": schema}}
+            assert not draft.snapshot.get("connectors")
+            await session.commit()
+        published = await publish(api, pid, headers)
+        assert published["snapshot"]["source_schemas"] == {"paid": schema}
+        assert not published["snapshot"].get("connectors")
+        result = await api.post(f"/processes/{pid}/run", headers=headers)
+        assert result.status_code == 200, result.text
+        assert result.json()["decided"] == 2
 
 
 async def test_initial_approval_replay_and_rollback():

@@ -355,20 +355,20 @@ function useDrop(processId: number, today: Date) {
   })
   const active = rules.data?.filter((rule) => rule.status === 'active').length ?? 0
   const compiling = rules.data?.some((rule) => rule.status === 'compiling')
-  const startBlocked = compiling
-    ? 'El motor no arranca mientras hay reglas compilando'
-    : rules.isSuccess && active === 0
-      ? NO_RULES
-      : undefined
-
-  // Without active rules, a waiting draft is the way out: publish it here and go on.
+  // A published process can intentionally rely on its default outcome without rules.
+  // A draft alone never enables execution.
   const { isManager } = useSession()
   const [publishing, setPublishing] = useState(false)
   const execution = useQuery({
     queryKey: keys.execution(processId),
     queryFn: () => api.getExecution(processId),
-    enabled: isManager && Boolean(startBlocked),
+    enabled: isManager && rules.isSuccess && active === 0,
   })
+  const startBlocked = compiling
+    ? 'El motor no arranca mientras hay reglas compilando'
+    : rules.isSuccess && active === 0 && !execution.data?.version_id
+      ? NO_RULES
+      : undefined
   const draft = useQuery({
     queryKey: keys.draft(processId),
     queryFn: () => api.getDraft(processId),

@@ -61,6 +61,7 @@ export function CommandPalette() {
         { id: 'fuentes', label: 'Fuentes de verdad', hint: 'ERP y maestros', to: paths.definitionSources(processId) },
         { id: 'inst', label: 'Ejecuciones', hint: 'histórico del lote', to: paths.instances(processId) },
         { id: 'review', label: 'Revisión', hint: 'esperando a una persona', to: paths.review(processId) },
+        { id: 'documentation', label: 'Documentación', hint: 'buscar documentos y evidencias', to: paths.documentation(processId) },
         { id: 'metrics', label: 'Métricas', hint: 'dinero y tiempo por parte', to: paths.metrics(processId) },
         { id: 'psettings', label: 'Ajustes del proceso', hint: 'OCR y modelos', to: paths.processSettings(processId) },
       )

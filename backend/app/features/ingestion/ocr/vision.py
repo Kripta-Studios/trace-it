@@ -14,6 +14,7 @@ from app.features.ingestion.config import Settings
 
 from .errors import ProviderUnavailable, note_provider_failure, provider_on_cooldown
 from .gemini import GENERATION, PROMPT, generate, output_text
+from .generation import chat_generation
 from .http import ProviderHTTP
 from .journal import record_response, recorded_call, retry_after
 from .transcript import remote_lines, transcript_warnings
@@ -58,7 +59,7 @@ class VisionFallback:
                     "prompt": PROMPT if provider == "gemini" else COMPATIBLE_PROMPT,
                     "generation": {**GENERATION, "maxOutputTokens": self.settings.vision_max_tokens}
                     if provider == "gemini"
-                    else self._generation(provider),
+                    else self._generation(provider, model),
                 }
                 for provider, model in self.settings.visual_chain()
             ],
@@ -73,8 +74,8 @@ class VisionFallback:
         base = self.settings.vlm_url if provider == "compatible" else self.settings.helmcode_url
         return base.rstrip("/") + "/chat/completions"
 
-    def _generation(self, provider):
-        result = {"temperature": 0, "max_tokens": self.settings.vision_max_tokens}
+    def _generation(self, provider, model):
+        result = chat_generation(model, self.settings.vision_max_tokens)
         if provider == "helmcode":
             result["reasoning_effort"] = "none"
         return result
@@ -144,7 +145,7 @@ class VisionFallback:
 
     def _read(self, provider, model, png, page, point_size, *, fields, fallback=False):
         prompt = _prompt(fields)
-        generation = self._generation(provider)
+        generation = self._generation(provider, model)
         endpoint = self._endpoint(provider, model)
         if provider == "gemini":
             prompt = PROMPT if fields is None else prompt

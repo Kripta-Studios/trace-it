@@ -32,8 +32,8 @@ export function DocumentPopup({
   const current = label(instance)
 
   return (
-    <Overlay onClose={onClose} size="xl">
-      <div role="dialog" aria-modal="true" aria-label="Original document" className="flex h-full min-h-0 flex-col overflow-hidden rounded-[20px] bg-surface shadow-pop ring-1 ring-line md:flex-row">
+    <Overlay onClose={onClose} size="xl" label="Original document">
+      <div className="flex h-full min-h-0 flex-col overflow-hidden rounded-[20px] bg-surface shadow-pop ring-1 ring-line md:flex-row">
         <div className="flex min-h-0 min-w-0 flex-1 flex-col">
           <header className="flex shrink-0 items-center justify-between gap-3 border-b border-hairline px-4 py-3">
             <div className="min-w-0">

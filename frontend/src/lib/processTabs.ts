@@ -5,6 +5,7 @@ export const PROCESS_TABS = [
   { id: 'definition', label: 'Definición', path: paths.processChat },
   { id: 'runs', label: 'Ejecuciones', path: paths.instances },
   { id: 'review', label: 'Revisión', path: paths.review },
+  { id: 'documentation', label: 'Documentación', path: paths.documentation },
   { id: 'metrics', label: 'Métricas', path: paths.metrics },
   { id: 'settings', label: 'Ajustes', path: paths.processSettings },
 ] as const
@@ -22,6 +23,7 @@ export function processTabFromPath(pathname: string, processId: number): Process
   ) {
     return 'definition'
   }
+  if (pathname.startsWith(`${base}/documentation`)) return 'documentation'
   if (pathname.startsWith(`${base}/instances`)) return 'runs'
   if (pathname.startsWith(`${base}/review`)) return 'review'
   if (pathname.startsWith(`${base}/metrics`)) return 'metrics'
