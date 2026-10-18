@@ -17,7 +17,8 @@ FRONTEND = Path(__file__).resolve().parents[3] / "frontend" / "src" / "api"
 
 def canonical(path: str) -> str:
     path = path.split("${query(", 1)[0]
-    return re.sub(r"\$?\{[^}]+\}", "{}", path)
+    # Literal query parameters select an operation's options, not a different API route.
+    return re.sub(r"\$?\{[^}]+\}", "{}", path).split("?", 1)[0]
 
 
 def same_route(route: str, call: str) -> bool:
