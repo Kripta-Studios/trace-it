@@ -90,6 +90,19 @@ export function TruthSources({ processId }: { processId: number }) {
               }}
             />
             {workbook.isError ? <ErrorNotice error={workbook.error} /> : null}
+            {workbook.isSuccess && workbook.data.warnings.length > 0 ? (
+              <Notice tone="warning" title={`${workbook.data.warnings.length} avisos al cargar el Excel`}>
+                Revisa los datos incompletos y las hojas que no se han incorporado.
+                <details className="mt-2">
+                  <summary className="cursor-pointer">Ver detalles</summary>
+                  <ul className="mt-2 max-h-60 space-y-1 overflow-y-auto">
+                    {workbook.data.warnings.map((warning, index) => (
+                      <li key={index}>{workbookWarning(warning)}</li>
+                    ))}
+                  </ul>
+                </details>
+              </Notice>
+            ) : null}
           </div>
         </NestedCard>
 
@@ -171,4 +184,17 @@ export function TruthSources({ processId }: { processId: number }) {
       </section>
     </div>
   )
+}
+
+function workbookWarning(warning: Record<string, unknown>): string {
+  const labels: Record<string, string> = {
+    DUPLICATE_IDENTICAL: 'Fila duplicada idéntica',
+    FIELD_MISSING: 'Falta un campo',
+    UNRECOGNIZED_SCHEMA: 'Hoja no reconocida',
+    FORMULA_UNEVALUATED: 'Fórmula sin evaluar',
+  }
+  const code = typeof warning.code === 'string' ? warning.code : 'Aviso'
+  const details = [warning.locator, warning.sheet, warning.field, warning.identity]
+    .filter((value): value is string => typeof value === 'string' && value.length > 0)
+  return [labels[code] ?? code, ...details].join(' · ')
 }

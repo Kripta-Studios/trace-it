@@ -24,13 +24,14 @@ from tests.support.users import manager
 
 def test_http_retries_reach_the_sdk(monkeypatch):
     """`limits.http_retries`: the SDK repeats a stalled request that many times, each a whole
-    timeout, before the chain moves on; unset keeps the SDK's default of 2."""
+    timeout, before the chain moves on; unset uses the configurable platform limit."""
     monkeypatch.setenv("HELMCODE_API_KEY", "k")
+    monkeypatch.setattr(settings, "agent_http_retries", 1)
     setup = llm.Setup(AgentSettings(model="helmcode:a", limits={"http_retries": 0}))
     fast = llm.chain(setup, "assistant", [])
     default = llm.chain(llm.Setup(AgentSettings(model="helmcode:a")), "assistant", [])
     assert [m.client.max_retries for m in fast.models] == [0]
-    assert [m.client.max_retries for m in default.models] == [2]
+    assert [m.client.max_retries for m in default.models] == [1]
     with pytest.raises(ValueError):
         AgentSettings(limits={"http_retries": 9})
 
@@ -70,8 +71,7 @@ def stalling_provider(monkeypatch, calls: list) -> None:
 
 async def test_a_stalled_request_moves_to_the_fallback_at_once(monkeypatch):
     """Latency: with `http_retries: 0` a request that times out goes to the next model after
-    one timeout, and the failure is in the trace. Without it the SDK repeats the stalled
-    request twice more, unseen: three timeouts before the fallback."""
+    one timeout, and the failure is in the trace. Explicit retries remain supported."""
     fast = AgentSettings(
         model="helmcode:stalled",
         fallback_models=["helmcode:fast"],
@@ -87,9 +87,46 @@ async def test_a_stalled_request_moves_to_the_fallback_at_once(monkeypatch):
     assert calls == [("stalled", 12.0), ("fast", 12.0)]
 
     calls.clear()
-    slow = fast.model_copy(update={"limits": {}})
+    slow = fast.model_copy(update={"limits": {"http_retries": 2}})
     await llm.run(Agent(None), "assistant", "hi", instructions="", setup=llm.Setup(slow))
     assert [model for model, _ in calls] == ["stalled", "stalled", "stalled", "fast"]
+
+
+async def test_platform_defaults_bound_unconfigured_provider_and_preserve_fallback(monkeypatch):
+    monkeypatch.setattr(settings, "agent_timeout_seconds", 7)
+    monkeypatch.setattr(settings, "agent_http_retries", 0)
+    calls = []
+    stalling_provider(monkeypatch, calls)
+    setup = llm.Setup(AgentSettings(model="helmcode:stalled", fallback_models=["helmcode:fast"]))
+    result, trace = await llm.run(Agent(None), "assistant", "hi", instructions="", setup=setup)
+    assert (result, trace.model) == ("ok", "fast")
+    assert calls == [("stalled", 7.0), ("fast", 7.0)]
+
+
+@pytest.mark.parametrize(
+    "role_timeout,model_timeout,expected",
+    [
+        (None, None, 120),
+        (None, 3, 3),
+        (5, 3, 5),
+        (5, None, 5),
+    ],
+)
+async def test_provider_timeout_overrides_remain_effective(
+    monkeypatch, role_timeout, model_timeout, expected
+):
+    monkeypatch.setattr(settings, "agent_timeout_seconds", 120)
+    calls = []
+    stalling_provider(monkeypatch, calls)
+    setup = llm.Setup(
+        AgentSettings(
+            model="helmcode:fast",
+            timeout_seconds=role_timeout,
+            model_settings={} if model_timeout is None else {"timeout": model_timeout},
+        )
+    )
+    await llm.run(Agent(None), "assistant", "hi", instructions="", setup=setup)
+    assert calls == [("fast", expected)]
 
 
 class Answer(BaseModel):

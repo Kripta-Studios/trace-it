@@ -47,6 +47,7 @@ type ReviewItem = {
   description: string
   evidence: { reference: string; explanation: string }[]
   detail?: string
+  inputs?: DiscoveryPlan['symbols']
 }
 
 type Preview = {
@@ -70,6 +71,8 @@ type Preview = {
   source_counts?: Record<string, number>
   source_mutations?: unknown
   review?: { valid?: boolean; basis?: string; previews?: unknown[] } | null
+  examples_basis?: string
+  extraction_warnings?: { code: string; symbol: string; source: string; message: string }[]
 }
 
 const CHAT_VERBS = ['leyendo el proceso', 'contrastando la evidencia', 'redactando la respuesta']
@@ -120,6 +123,7 @@ function reviewItems(plan: DiscoveryPlan): ReviewItem[] {
       description: setupDescription(plan),
       evidence: [],
       detail: plan.description,
+      inputs: plan.symbols,
     },
     ...plan.connectors.map((item) => ({
       key: `connector:${item.name}`,
@@ -414,7 +418,7 @@ export function ProcessDraftChat({
     missingPlan.length === 0 &&
     !blockedByVersionDraft
   const preview = current?.preview as Preview | null | undefined
-  const busy = send.isPending || review.isPending || syncSource.isPending || prepare.isPending
+  const busy = send.isPending || review.isPending || syncSource.isPending || prepare.isPending || publish.isPending
   const error =
     sessions.error ??
     session.error ??
@@ -432,7 +436,7 @@ export function ProcessDraftChat({
   }, [visibleMessages.length, send.isPending])
 
   const submit = () => {
-    if (send.isPending || (!draft.trim() && files.length === 0)) return
+    if (busy || (!draft.trim() && files.length === 0)) return
     send.mutate({
       message: draft.trim() || 'Revisa la evidencia adjunta y propón los cambios necesarios.',
       files,
@@ -640,7 +644,7 @@ export function ProcessDraftChat({
           <Textarea
             rows={3}
             value={draft}
-            disabled={review.isPending || syncSource.isPending || prepare.isPending}
+            disabled={review.isPending || syncSource.isPending || prepare.isPending || publish.isPending}
             onChange={(event) => setDraft(event.target.value)}
             onKeyDown={(event) => {
               if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) {
@@ -771,7 +775,7 @@ export function ProcessDraftChat({
                 {pending.length ? (
                   <Button
                     tone="primary"
-                    disabled={review.isPending}
+                    disabled={busy}
                     onClick={() =>
                       review.mutate({ keys: pending.map((item) => item.key), disposition: 'accepted' })
                     }
@@ -787,7 +791,7 @@ export function ProcessDraftChat({
                     key={item.key}
                     item={item}
                     disposition={current.reviews[item.key]}
-                    reviewing={review.isPending}
+                    reviewing={busy}
                     onReview={(disposition) => review.mutate({ keys: [item.key], disposition })}
                   />
                 ))}
@@ -808,7 +812,7 @@ export function ProcessDraftChat({
                       <p className="text-[11px] text-muted">{loaded ? 'Snapshot cargado' : 'Sin snapshot'}</p>
                     </div>
                     <Button
-                      disabled={!accepted || loaded || syncSource.isPending}
+                      disabled={!accepted || loaded || busy}
                       onClick={() => syncSource.mutate(connector.name)}
                     >
                       <RefreshCw size={11} />
@@ -832,7 +836,7 @@ export function ProcessDraftChat({
                 {blockedByVersionDraft ? <p className="text-[11px] text-escalar">Cierra el otro borrador antes de preparar.</p> : null}
                 <Button
                   tone="primary"
-                  disabled={!canPrepare || prepare.isPending}
+                  disabled={!canPrepare || busy}
                   onClick={() => prepare.mutate()}
                 >
                   <FileUp size={12} />
@@ -847,6 +851,7 @@ export function ProcessDraftChat({
               processId={processId}
               preview={preview}
               publishing={publish.isPending}
+              busy={busy}
               onPrepare={() => prepare.mutate()}
               onPublish={() => publish.mutate()}
             />
@@ -1044,12 +1049,14 @@ export function ProcessDraftPreview({
   processId,
   preview,
   publishing,
+  busy = false,
   onPrepare,
   onPublish,
 }: {
   processId?: number
   preview: Preview
   publishing: boolean
+  busy?: boolean
   onPrepare: () => void
   onPublish: () => void
 }) {
@@ -1066,6 +1073,17 @@ export function ProcessDraftPreview({
           {validCompilations} reglas compiladas · {examples.filter((item) => item.passed).length} de{' '}
           {examples.length} ejemplos correctos
         </Notice>
+
+        {preview.examples_basis ? <p className="text-[11px] text-muted">
+          Los ejemplos comprueban valores ya aportados. No prueban la lectura de documentos ni la extracción de datos.
+        </p> : null}
+        {preview.extraction_warnings?.map((warning) => <Notice
+          key={`${warning.code}:${warning.symbol}`}
+          tone="warning"
+          title={`${warning.symbol}: lectura automática desactivada`}
+        >
+          Este dato obligatorio no se leerá de los documentos. Pide en el chat que se lea del documento o confirma cómo se aportará por otra vía.
+        </Notice>)}
 
         {examples.length ? (
           <ul className="divide-y divide-hairline rounded-[10px] bg-canvas px-3 ring-1 ring-line">
@@ -1097,11 +1115,11 @@ export function ProcessDraftPreview({
         {preview.review?.basis ? <p className="text-[11px] text-muted">{preview.review.basis}</p> : null}
 
         <div className="flex flex-wrap gap-2 border-t border-hairline pt-3">
-          <Button disabled={publishing} onClick={onPrepare}>
+          <Button disabled={publishing || busy} onClick={onPrepare}>
             <RefreshCw size={11} />
             Repetir comprobaciones
           </Button>
-          <Button tone="primary" disabled={!preview.valid || publishing} onClick={onPublish}>
+          <Button tone="primary" disabled={!preview.valid || publishing || busy} onClick={onPublish}>
             {publishing ? 'Publicando…' : 'Publicar'}
           </Button>
         </div>
@@ -1172,6 +1190,20 @@ export function ProcessDraftReviewItem({
           {item.detail ? (
             <p className="mt-1 font-mono text-[10px] text-faint">{item.detail}</p>
           ) : null}
+          {item.inputs?.length ? <ul aria-label="Lectura de inputs" className="mt-2 space-y-2 text-[11px] text-muted">
+            {item.inputs.map((input) => {
+              const source = input.extraction?.source ?? 'document'
+              const sourceLabel = { document: 'Documento', filename: 'Nombre del archivo', text: 'Texto completo', none: 'Sin lectura automática' }[source]
+              const labels = input.extraction?.labels ?? []
+              return <li key={input.name}>
+                <span className="font-mono text-ink">{input.name}</span> · {sourceLabel}
+                {source === 'document' ? <span className="block">Etiquetas: {labels.length ? labels.join(', ') : 'no configuradas'}</span> : null}
+                {source === 'none' && input.required ? <p role="status" className="mt-1 text-escalar">
+                  Este dato obligatorio no se leerá de los documentos. Pide su lectura en el chat o confirma cómo se aportará por otra vía.
+                </p> : null}
+              </li>
+            })}
+          </ul> : null}
           {item.evidence.length ? (
             <p className="mt-1 text-[10px] text-faint">{evidenceText(item.evidence)}</p>
           ) : null}

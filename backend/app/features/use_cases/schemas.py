@@ -38,7 +38,7 @@ class AgentSettings(BaseModel):
     # retries, timeout, connection) or its answer is cut by the output-token limit; a
     # rejected answer (ModelRetry) never switches (ADR 0019).
     fallback_models: list[str] = Field([], examples=[["helmcode:glm5.3-flash"]])
-    # Per request to the provider; None: the provider's own default.
+    # Per provider request; None uses model_settings.timeout or the platform's bounded default.
     timeout_seconds: float | None = Field(default=None, gt=0, le=3600)
     retries: int | None = Field(default=None, ge=0, le=10)
     request_limit: int | None = Field(default=None, ge=1, le=100)
@@ -47,7 +47,7 @@ class AgentSettings(BaseModel):
     # PydanticAI model settings, e.g. {"temperature": 0}.
     model_settings: dict[str, Any] = {}
     # compiler: max_attempts, auto_activate_max_change; tester: min_tests, max_reviews; any
-    # role: http_retries, the SDK's repeats of one request before the next model (default 2).
+    # role: http_retries, SDK repeats before the next model (platform default: 0).
     limits: dict[str, float] = {}
     examples: list[Example] = []
     # normalizer: the decision of a check whose failure the norm does not name (ADR 0017).

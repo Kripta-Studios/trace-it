@@ -389,7 +389,7 @@ function useDrop(processId: number, today: Date) {
         queued.map((item) => item.file),
         (event) => setProgress((current) => [...current, event]),
       )
-      const run = await api.run(processId)
+      const run = await api.run(processId, uploads.map((upload) => upload.instance_id))
       await queryClient.invalidateQueries()
       const queue = await queryClient.fetchQuery({
         queryKey: keys.queue(processId, 'all'),
@@ -573,11 +573,12 @@ function Toast({
 function Totals({ cases }: { cases: Triage[] }) {
   const overdue = cases.filter((entry) => entry.flags.includes('overdue'))
   const urgent = cases.filter((entry) => severity(entry.flags) === 'medium')
-  const amount = cases.reduce((sum, entry) => sum + (entry.amount ?? 0), 0)
+  const amounts = cases.flatMap((entry) => entry.amount == null ? [] : [entry.amount])
+  const amount = amounts.length ? amounts.reduce((sum, value) => sum + value, 0) : cases.length ? null : 0
   const cells = [
     { label: 'Vencidas', value: String(overdue.length), tone: overdue.length ? 'text-nopagar' : 'text-ink' },
     { label: 'Urgentes', value: String(urgent.length), tone: urgent.length ? 'text-urgent' : 'text-ink' },
-    { label: 'Importe en espera', value: formatAmount(amount), tone: 'text-ink' },
+    { label: amounts.length < cases.length ? 'Importe conocido' : 'Importe en espera', value: formatAmount(amount), tone: 'text-ink' },
   ]
   return (
     <section className="divide-y divide-hairline rounded-[16px] bg-surface ring-1 ring-line">

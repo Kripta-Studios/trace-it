@@ -1,6 +1,7 @@
 import { Navigate, Outlet, Route, Routes, useParams } from 'react-router'
 import { AppShell } from './components/shell/AppShell'
 import { ErrorNotice } from './components/shell/Notice'
+import { Button } from './components/shell/Controls'
 import { Inbox } from './routes/Inbox'
 import { Instances } from './routes/Instances'
 import { Landing } from './routes/Landing'
@@ -54,12 +55,16 @@ export default function App() {
 }
 
 function Console() {
-  const { user, identityError } = useSession()
+  const { user, identityError, restoreDefaultIdentity } = useSession()
   return (
     <AppShell>
       <div className="relative flex min-h-0 flex-1 flex-col">
         <MailNotifications />
-        {user ? <Outlet /> : identityError ? <ErrorNotice error={identityError} /> : null}
+        {user ? <Outlet /> : identityError ? (
+          <ErrorNotice error={identityError} action={
+            <Button onClick={restoreDefaultIdentity}>Usar identidad predeterminada</Button>
+          } />
+        ) : null}
       </div>
     </AppShell>
   )

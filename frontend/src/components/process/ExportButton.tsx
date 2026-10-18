@@ -4,14 +4,14 @@ import { Download } from 'lucide-react'
 import { api, ApiError } from '../../api/client'
 import { Button } from '../shell/Controls'
 import { Overlay } from '../shell/Overlay'
-import { Notice } from '../shell/Notice'
+import { ErrorNotice, Notice } from '../shell/Notice'
 
 /**
  * The backend answers 409 while any instance is still PENDING, so the blocked
  * case is the one worth showing well.
  */
 export function ExportButton({ processId }: { processId: number }) {
-  const [blocked, setBlocked] = useState<string | null>(null)
+  const [blocked, setBlocked] = useState<unknown>(null)
 
   const download = useMutation({
     mutationFn: () => api.exportOutcomes(processId),
@@ -25,7 +25,7 @@ export function ExportButton({ processId }: { processId: number }) {
       URL.revokeObjectURL(url)
     },
     onError: (error) => {
-      if (error instanceof ApiError && error.status === 409) setBlocked(error.message)
+      setBlocked(error)
     },
   })
 
@@ -46,9 +46,11 @@ export function ExportButton({ processId }: { processId: number }) {
       {blocked ? (
         <Overlay onClose={() => setBlocked(null)}>
           <div className="rounded-[16px] bg-surface p-4 shadow-pop ring-1 ring-line">
-            <Notice tone="warning" title="No se puede exportar todavía">
-              {blocked}
-            </Notice>
+            {blocked instanceof ApiError && blocked.status === 409 ? (
+              <Notice tone="warning" title="No se puede exportar todavía">
+                {blocked.message}
+              </Notice>
+            ) : <ErrorNotice error={blocked} />}
             <div className="mt-3 flex justify-end">
               <Button tone="soft" onClick={() => setBlocked(null)}>
                 Entendido

@@ -129,7 +129,7 @@ export function Process() {
   })
 
   const run = useMutation({
-    mutationFn: () => api.run(processId),
+    mutationFn: (instanceIds: number[]) => api.run(processId, instanceIds),
     // Everything counts instances, and the new run joins the history.
     onSuccess: () => void queryClient.invalidateQueries(),
   })
@@ -204,8 +204,8 @@ export function Process() {
   const startRun = async () => {
     if (!queue.length || startBlocked) return
     try {
-      await upload.mutateAsync(queue.map((item) => item.file))
-      await run.mutateAsync()
+      const uploaded = await upload.mutateAsync(queue.map((item) => item.file))
+      await run.mutateAsync(uploaded.map((item) => item.instance_id))
     } catch {
       // el panel muestra el error
     }

@@ -3,18 +3,20 @@ import { api } from '../../api/client'
 import type { AgentConfigOut } from '../../api/contracts'
 import { keys } from '../../api/queries'
 import { t } from '../../i18n'
+import { useSession } from '../../state/session'
 import { Input } from '../shell/Controls'
 import { Empty, ErrorNotice } from '../shell/Notice'
 
 /** The model each agent of one use case runs. One request; a change is a new agent version. */
 export function UseCaseModels({ useCaseId }: { useCaseId: number }) {
+  const { isManager } = useSession()
   const queryClient = useQueryClient()
   const useCase = useQuery({
     queryKey: keys.useCase(useCaseId),
     queryFn: () => api.getUseCase(useCaseId),
   })
   const change = useMutation({
-    mutationFn: ({ agent, model }: { agent: AgentConfigOut; model: string }) =>
+    mutationFn: ({ agent, model }: { agent: AgentConfigOut; model: string | null }) =>
       api.setAgentModel(useCaseId, agent, model),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: keys.useCase(useCaseId) }),
   })
@@ -30,10 +32,13 @@ export function UseCaseModels({ useCaseId }: { useCaseId: number }) {
           <Input
             key={`${agent.role}:${agent.version}`}
             defaultValue={agent.config.model ?? ''}
+            aria-label={`${agent.role} model`}
+            readOnly={!isManager}
+            disabled={change.isPending}
             className="font-mono"
             onBlur={(event) => {
-              const model = event.target.value.trim()
-              if (model && model !== agent.config.model) change.mutate({ agent, model })
+              const model = event.target.value.trim() || null
+              if (isManager && model !== (agent.config.model ?? null)) change.mutate({ agent, model })
             }}
           />
         </div>

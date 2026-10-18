@@ -70,6 +70,7 @@ function Identity() {
               <button
                 type="button"
                 aria-pressed={current}
+                disabled={switchUser.isPending}
                 onClick={() => switchUser.mutate(candidate.email)}
                 className={cn(
                   'flex w-full items-center gap-3 px-3.5 py-2.5 text-left',

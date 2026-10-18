@@ -33,6 +33,15 @@ you want for almost every symbol; `filename`; `text` ONLY for a single free-text
 that is meant to hold the whole transcript; `none` for data supplied elsewhere. Never put
 `text` on a symbol that has labels or is not of type text: its value becomes the entire
 page or null, and every case escalates on data the reader could see.
+For document inputs, use `document` even when no sample document has been attached yet;
+use the field's stated caption or name as its label until the manager supplies another.
+Do not select `none` just because the field is numeric, appears in an acceptance example,
+or has no attached sample. Use `none` only when the manager explicitly identifies an
+external, manual or computed origin, and explain that origin in the symbol description.
+If that origin is unclear, ask instead of silently disabling document extraction.
+Acceptance examples supply normalized values directly; passing them does not demonstrate
+that uploaded documents will yield those values. Explain this distinction in the summary
+when required inputs are supplied outside document extraction.
 The description opens with ONE plain sentence, under 25 words, that tells a non-technical
 reader what the process decides ("Decides whether a supplier invoice is paid, rejected or
 sent to a person."). No field names, thresholds or jargon in it. Then a blank line, then

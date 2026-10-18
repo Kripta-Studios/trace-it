@@ -133,7 +133,8 @@ export const liveClient: ApiClient = {
   getExecution: (processId) => get<ExecutionOut>(`/processes/${processId}/execution`),
   saveDraft: (processId, body: DraftIn) => put<VersionDraft>(`/processes/${processId}/draft`, body),
 
-  run: (processId) => post<RunSummary>(`/processes/${processId}/run`),
+  run: (processId, instanceIds) => post<RunSummary>(`/processes/${processId}/run`,
+    instanceIds ? { instance_ids: [...new Set(instanceIds)] } : undefined),
   reprocess: (processId, dryRun) =>
     post<ReprocessSummary>(`/processes/${processId}/reprocess${query({ dry_run: String(dryRun) })}`, {}),
   listRuns: (processId) => get<RunOut[]>(`/processes/${processId}/runs`),

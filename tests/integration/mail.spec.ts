@@ -3,6 +3,7 @@ import { expect, test } from '@playwright/test'
 const API = process.env.MAIL_TEST_API_URL ?? 'http://127.0.0.1:18285'
 
 test('mail settings show automatic outcomes, notices and attachment retry with preserved history', async ({ page, request }, testInfo) => {
+  test.setTimeout(90_000)
   const state = await (await request.get(`${API}/_mail-test/state`)).json()
   const root = `${API}/processes/${state.process_id}/mail-ingestion`
   const headers = { 'X-User-Id': String(state.user_id) }
@@ -40,6 +41,17 @@ test('mail settings show automatic outcomes, notices and attachment retry with p
   expect(history.activities.filter((event: any) => event.kind === 'reading')).toHaveLength(3)
   expect(history.activities.some((event: any) => event.kind === 'completed')).toBe(true)
   await page.screenshot({ path: testInfo.outputPath('mail-settings.png'), fullPage: true })
+
+  expect((await request.post(`${API}/_mail-test/deliver-duplicates`)).ok()).toBeTruthy()
+  const duplicate = page.locator('li[id^="mail-"]').filter({ hasText: 'Duplicate receipt must retain its original decision' })
+  await expect(duplicate.getByText('· Ya registrado', { exact: true })).toBeVisible()
+  await expect(duplicate.getByRole('link', { name: 'Abrir', exact: true })).toHaveCount(1)
+  const informational = page.locator('li[id^="mail-"]').filter({ hasText: 'Informational message without attachments' })
+  await expect(informational.getByText('Sin PDF adjunto', { exact: true })).toBeVisible()
+  const duplicateRow = (await overview()).messages.find((item: any) => item.envelope.subject === 'Duplicate receipt must retain its original decision')
+  const original = delivered.attachments.find((part: any) => part.original_name === 'pay.pdf')
+  expect(duplicateRow.attachments[0].instance_id).toBe(original.instance_id)
+  expect(duplicateRow.attachments[0].decision_id).toBe(original.decision_id)
 
   expect((await request.post(`${API}/_mail-test/deliver-retry`)).ok()).toBeTruthy()
   const retry = page.locator('li[id^="mail-"]').filter({ hasText: 'Retry one attachment' })

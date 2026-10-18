@@ -103,11 +103,11 @@ def model_for(role: str) -> Model | str:
 
 def _openai(base_url: str | None, api_key: str | None, retries: float | None) -> OpenAIProvider:
     """An OpenAI-compatible provider. `retries`: how often the SDK repeats a failed request
-    (timeout, 429, 5xx) before the chain moves on; None keeps the SDK's 2. Each repeat waits
-    a whole timeout again, unseen by `failed_attempts`."""
+    (timeout, 429, 5xx) before the chain moves on; None uses the platform limit. Each repeat
+    waits a whole timeout again, unseen by `failed_attempts`."""
     provider = OpenAIProvider(base_url=base_url, api_key=api_key)
     if retries is None:
-        return provider
+        retries = settings.agent_http_retries
     return OpenAIProvider(openai_client=provider.client.with_options(max_retries=int(retries)))
 
 
@@ -267,6 +267,7 @@ async def run(
     except (OpenAIError, UserError) as error:  # building a provider: no key, unknown model
         raise AgentError(f"{role}: model not configured: {error}") from error
     model_settings = dict(setup.settings.model_settings)
+    model_settings.setdefault("timeout", settings.agent_timeout_seconds)
     if setup.settings.timeout_seconds:
         model_settings["timeout"] = setup.settings.timeout_seconds
     prompt_hash = hashlib.sha256(instructions.encode()).hexdigest()[:12]

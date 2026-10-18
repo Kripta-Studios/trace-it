@@ -1,6 +1,7 @@
 """The process and rule endpoints against the local database (`make test-db`)."""
 
 import uuid
+from copy import deepcopy
 from datetime import UTC, datetime
 
 import pytest
@@ -27,6 +28,25 @@ INVOICES = {
         {"name": "supplier", "type": "text"},
     ],
 }
+
+
+@pytest.mark.parametrize("field", ["process", "symbol", "decision"])
+@pytest.mark.parametrize("name", ["", "   ", "\t\n"])
+async def test_definition_rejects_blank_names_without_creating_process(field, name):
+    definition = {"name": f"invalid-name-{uuid.uuid4().hex}", **deepcopy(INVOICES)}
+    if field == "process":
+        definition["name"] = name
+    elif field == "symbol":
+        definition["symbols"][0]["name"] = name
+    else:
+        definition["decision_types"][0]["name"] = name
+    async with manager_client() as api:
+        before = {row["id"] for row in (await api.get("/processes")).json()}
+        response = await api.post("/processes/definition", json=definition)
+        assert response.status_code == 422, response.text
+        assert "must not be blank" in response.text
+        after = {row["id"] for row in (await api.get("/processes")).json()}
+        assert after == before
 
 
 async def test_process_rule_flow(monkeypatch: pytest.MonkeyPatch) -> None:

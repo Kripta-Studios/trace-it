@@ -327,7 +327,7 @@ export interface ApiClient {
   getExecution(processId: number): Promise<ExecutionOut>
   saveDraft(processId: number, body: DraftIn): Promise<VersionDraft>
 
-  run(processId: number): Promise<RunSummary>
+  run(processId: number, instanceIds?: number[]): Promise<RunSummary>
   reprocess(processId: number, dryRun: boolean): Promise<ReprocessSummary>
   /** Every run of the process, newest first. */
   listRuns(processId: number): Promise<RunOut[]>
@@ -381,5 +381,5 @@ export interface ApiClient {
   /** One use case with its agents and the model each one runs. */
   getUseCase(id: number): Promise<UseCaseDetail>
   /** A new version of that agent's config: the same settings with another model. */
-  setAgentModel(useCaseId: number, agent: AgentConfigOut, model: string): Promise<AgentConfigOut>
+  setAgentModel(useCaseId: number, agent: AgentConfigOut, model: string | null): Promise<AgentConfigOut>
 }

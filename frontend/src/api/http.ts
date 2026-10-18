@@ -32,7 +32,7 @@ export function setUserId(id: number | null) {
   userId = id
 }
 
-/** Called when the backend refuses the identity: 401, 403, or a 422 on `x-user-id`. */
+/** Called when the identity is missing or invalid: 401 or a 422 on `x-user-id`. */
 export function setOnIdentityRejected(callback: (() => void) | null) {
   onIdentityRejected = callback
 }
@@ -46,7 +46,8 @@ function headers(extra?: HeadersInit): Headers {
 async function fail(response: Response): Promise<never> {
   let code = 'http_error'
   let message = `${response.status} ${response.statusText}`
-  let badIdentity = response.status === 401 || response.status === 403
+  // A forbidden action does not invalidate a selected operator's identity.
+  let badIdentity = response.status === 401
   try {
     const body = await response.json()
     if (typeof body?.code === 'string') code = body.code

@@ -18,6 +18,15 @@ import { setOnIdentityRejected, setUserId } from '../api/http'
  * own. Every write still carries that user's id, so each action keeps its author.
  */
 const DEFAULT_EMAIL = import.meta.env.VITE_DEFAULT_USER_EMAIL || 'martin@trace-it.local'
+const IDENTITY_KEY = 'trace.identity'
+
+function storedEmail(): string {
+  try {
+    return window.sessionStorage.getItem(IDENTITY_KEY) || DEFAULT_EMAIL
+  } catch {
+    return DEFAULT_EMAIL
+  }
+}
 
 type Session = {
   user: User | null
@@ -27,6 +36,7 @@ type Session = {
   isManager: boolean
   /** Act as another user of the process, from Ajustes. */
   signIn: (email: string) => Promise<User>
+  restoreDefaultIdentity: () => void
 }
 
 const Ctx = createContext<Session | null>(null)
@@ -46,8 +56,12 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       setUserId(next.id)
       setUser(next)
       setIdentityError(null)
-      // Only a new identity changes what the backend answers. Refetching on the same one
-      // would loop on a 403 that no identity can fix.
+      try {
+        window.sessionStorage.setItem(IDENTITY_KEY, next.email)
+      } catch {
+        // The selected identity still works when browser storage is unavailable.
+      }
+      // Only a new identity changes what the backend answers.
       if (changed) void queryClient.invalidateQueries()
       return next
     },
@@ -56,8 +70,11 @@ export function SessionProvider({ children }: { children: ReactNode }) {
 
   /** The automatic identity, at most one request at a time. */
   const identify = useCallback(() => {
-    pending.current ??= signIn(DEFAULT_EMAIL)
+    pending.current ??= signIn(current.current?.email ?? storedEmail())
       .catch((error: unknown) => {
+        current.current = null
+        setUserId(null)
+        setUser(null)
         setIdentityError(error)
         throw error
       })
@@ -71,15 +88,19 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     identify().catch(() => undefined)
   }, [identify])
 
-  // A 401 or 403 retries the automatic identity; the screen still shows its ErrorNotice.
+  const restoreDefaultIdentity = useCallback(() => {
+    void signIn(DEFAULT_EMAIL).catch((error: unknown) => setIdentityError(error))
+  }, [signIn])
+
+  // Recover the selected identity after a 401; never replace an operator with the manager.
   useEffect(() => {
     setOnIdentityRejected(() => identify().catch(() => undefined))
     return () => setOnIdentityRejected(null)
   }, [identify])
 
   const value = useMemo(
-    () => ({ user, identityError, isManager: user?.role === 'manager', signIn }),
-    [user, identityError, signIn],
+    () => ({ user, identityError, isManager: user?.role === 'manager', signIn, restoreDefaultIdentity }),
+    [user, identityError, signIn, restoreDefaultIdentity],
   )
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>

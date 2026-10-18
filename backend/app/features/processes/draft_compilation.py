@@ -319,6 +319,22 @@ async def preview(
         "review": review,
         "compilations": compilations,
         "examples": results,
+        "examples_basis": (
+            "Acceptance examples test supplied values, not document ingestion or extraction."
+        ),
+        "extraction_warnings": [
+            {
+                "code": "REQUIRED_INPUT_EXTRACTION_DISABLED",
+                "symbol": symbol.name,
+                "source": "none",
+                "message": (
+                    f"Required input `{symbol.name}` is not read from uploaded documents. "
+                    "Configure document extraction or confirm how it is supplied externally."
+                ),
+            }
+            for symbol in plan.symbols
+            if symbol.required and symbol.extraction and symbol.extraction.source == "none"
+        ],
         "impact": impact,
         "source_counts": {name: len(rows) for name, rows in tables.items()},
         "replaced_rules": [

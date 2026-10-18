@@ -150,10 +150,11 @@ async def start():
 @app.post("/_mail-test/deliver")
 async def deliver():
     box = fixture["mailbox"]
+    fixture["pay_pdf"] = pdf_bytes("Holder: open")
     box.deliver(
         synthetic_mail(
             [
-                ("pay.pdf", pdf_bytes("Holder: open"), "pdf"),
+                ("pay.pdf", fixture["pay_pdf"], "pdf"),
                 ("deny.pdf", pdf_bytes("Holder: paid"), "octet-stream"),
                 ("review.pdf", pdf_bytes("Holder: review"), "pdf"),
             ],
@@ -161,6 +162,20 @@ async def deliver():
         ),
         seen=True,
     )
+    fixture["before"] = dict(box.messages), dict(box.flags)
+    return {"delivered": True}
+
+
+@app.post("/_mail-test/deliver-duplicates")
+async def deliver_duplicates():
+    box = fixture["mailbox"]
+    box.deliver(
+        synthetic_mail(
+            [("same-receipt.pdf", fixture["pay_pdf"], "pdf")],
+            subject="Duplicate receipt must retain its original decision",
+        )
+    )
+    box.deliver(synthetic_mail([], subject="Informational message without attachments"))
     fixture["before"] = dict(box.messages), dict(box.flags)
     return {"delivered": True}
 

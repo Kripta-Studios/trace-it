@@ -151,6 +151,12 @@ async def edit(session, process_id: int, body: DraftIn, author: str) -> ProcessD
 
 def check_configuration(snapshot: dict) -> None:
     detail = ProcessDetail.model_validate(snapshot["process"])
+    if not detail.name.strip():
+        raise ValueError("Process name must not be blank")
+    if any(not t.name.strip() for t in detail.decision_types):
+        raise ValueError("Decision type names must not be blank")
+    if any(not s.name.strip() for s in detail.symbols):
+        raise ValueError("Symbol names must not be blank")
     types = detail.decision_types
     names = {t.name for t in types}
     if len(names) != len(types) or len({t.priority for t in types}) != len(types):

@@ -41,6 +41,12 @@ class Definition(ProcessIn):
 
     @model_validator(mode="after")
     def _consistent(self) -> Self:
+        if not self.name.strip():
+            raise ValueError("Process name must not be blank")
+        if any(not t.name.strip() for t in self.decision_types):
+            raise ValueError("Decision type names must not be blank")
+        if any(not s.name.strip() for s in self.symbols):
+            raise ValueError("Symbol names must not be blank")
         types = {t.name for t in self.decision_types}
         if len(types) != len(self.decision_types):
             raise ValueError("Duplicate decision types")
