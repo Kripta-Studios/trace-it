@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test'
+import { readFile } from 'node:fs/promises'
 
 async function settingsFixture(page: Page) {
   const manager = { id: 1, name: 'Manager', email: 'martin@trace-it.local', role: 'manager' }
@@ -51,7 +52,7 @@ test('permission denial preserves the explicitly selected operator identity', as
 
 test('export server errors remain visible and can be dismissed', async ({ page }) => {
   const state = await settingsFixture(page)
-  await page.route('**/api/processes/1/export', route => route.fulfill({ status: 503, json: { code: 'export_failed', message: 'Synthetic export outage' } }))
+  await page.route('**/api/processes/1/export*', route => route.fulfill({ status: 503, json: { code: 'export_failed', message: 'Synthetic export outage' } }))
   await page.goto('processes/1/instances')
   await page.getByRole('button', { name: 'Exportar', exact: true }).click()
   await expect(page.getByText('Synthetic export outage', { exact: true })).toBeVisible()
@@ -183,3 +184,32 @@ for (const screen of ['inbox', 'panel']) {
     expect([...pending]).toEqual([6])
   })
 }
+
+test('console exports the latest human resolution with trace data', async ({ page }) => {
+  const state = await settingsFixture(page)
+  const requests: URL[] = []
+  await page.route('**/api/processes/1/export*', route => {
+    const url = new URL(route.request().url())
+    requests.push(url)
+    const full = url.searchParams.get('full') === 'true'
+    return route.fulfill({
+      contentType: 'application/x-ndjson',
+      body: JSON.stringify({
+        file_id: 'reviewed-travel.pdf',
+        result: full ? 'APPROVE' : 'REVIEW',
+        ...(full ? { decided_by: 'Manager', reason: 'Receipt checked', trace_url: '/processes/1/review?i=12' } : {}),
+      }) + '\n',
+    })
+  })
+  await page.goto('processes/1/instances')
+  const downloaded = page.waitForEvent('download')
+  await page.getByRole('button', { name: 'Exportar', exact: true }).click()
+  const download = await downloaded
+  expect(download.suggestedFilename()).toBe('outcomes.jsonl')
+  const contents = JSON.parse((await readFile((await download.path())!, 'utf8')).trim())
+  expect(contents).toMatchObject({ result: 'APPROVE', decided_by: 'Manager', reason: 'Receipt checked' })
+  expect(contents.trace_url).toContain('/review?i=12')
+  expect(requests).toHaveLength(1)
+  expect(requests[0].searchParams.get('full')).toBe('true')
+  expect(state.errors).toEqual([])
+})

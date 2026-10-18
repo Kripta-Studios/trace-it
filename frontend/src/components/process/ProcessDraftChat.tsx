@@ -19,6 +19,7 @@ import type {
   Proposal,
   SpanNode,
   ValidationChange,
+  ValidationReport,
 } from '../../api/contracts'
 import { families, keys } from '../../api/queries'
 import { cn } from '../../lib/cn'
@@ -30,6 +31,7 @@ import { TerminalLoader } from '../shell/TerminalLoader'
 import { NestedCard } from '../shell/Well'
 import { FileChip, revokePreview, toPreview, type FilePreview } from './FileChip'
 import { ValidationImpact } from './ValidationImpact'
+import { HistoricalCoverage } from './HistoricalCoverage'
 import { RulesPane } from './RulesPane'
 import { VersionChip, VersionView } from './ProcessVersions'
 import { t } from '../../i18n'
@@ -66,6 +68,8 @@ type Preview = {
     resolved_by_person?: (ValidationChange & { resolution: string; resolved_by: string })[]
     errors?: { instance_id: number; name?: string; reason?: string }[]
     error?: string
+    coverage?: ValidationReport['coverage']
+    not_evaluable?: ValidationReport['not_evaluable']
   }
   compilations?: { proposal?: string; report?: { valid?: boolean }; interpretation?: string }[]
   source_counts?: Record<string, number>
@@ -1104,7 +1108,10 @@ export function ProcessDraftPreview({
         ) : null}
 
         {processId != null && preview.impact ? (
-          <ValidationImpact processId={processId} validation={preview.impact} />
+          <>
+            <HistoricalCoverage validation={preview.impact} />
+            <ValidationImpact processId={processId} validation={preview.impact} />
+          </>
         ) : null}
 
         {preview.source_counts && Object.keys(preview.source_counts).length ? (

@@ -1,8 +1,8 @@
 import { expect, test, type Page } from '@playwright/test'
 
-async function preparedDraft(page: Page) {
+async function preparedDraft(page: Page, history?: 'incomplete' | 'absent') {
   const session = {
-    id: 901, process_id: null, published_process_id: null, revision: 4,
+    id: 901, process_id: history ? 8 : null, published_process_id: null, revision: 4,
     name: 'Library acquisition', messages: [], reviews: { setup: 'accepted' }, snapshots: [],
     changes: [{ field: 'name', before: '', after: 'Library acquisition' }],
     plan: {
@@ -19,6 +19,13 @@ async function preparedDraft(page: Page) {
       valid: true, examples: [], compilations: [],
       examples_basis: 'Acceptance examples test supplied values, not document ingestion or extraction.',
       extraction_warnings: [{ code: 'REQUIRED_INPUT_EXTRACTION_DISABLED', symbol: 'estimated_cost', source: 'none', message: 'Required input is not read from documents.' }],
+      impact: history ? {
+        unchanged: 3, changes: [], conflicts: [],
+        ...(history === 'incomplete' ? {
+          coverage: { total: 3, evaluated: 0, not_evaluable: 3, partial: 0, none: 3 },
+          not_evaluable: [{ instance_id: 3, name: 'library-boundary.html', missing_symbols: ['estimated_cost', 'copies'] }],
+        } : {}),
+      } : undefined,
     },
   }
   let release = () => {}
@@ -32,6 +39,10 @@ async function preparedDraft(page: Page) {
     if (path === '/login') body = { id: 1, name: 'Manager', email: 'manager@example.invalid', role: 'manager' }
     if (path === '/process-drafts') body = [session]
     if (path === '/process-drafts/901') body = session
+    if (path === '/processes') body = history ? [{ id: 8, ...session.plan }] : []
+    if (path === '/processes/8') body = { id: 8, ...session.plan }
+    if (path === '/processes/8/execution') body = { revision: null, version_id: 1 }
+    if (path === '/processes/8/summary') body = { queue: 0 }
     if (request.method() === 'POST' && path !== '/login') {
       writes.push(path)
       await pending
@@ -39,7 +50,7 @@ async function preparedDraft(page: Page) {
     }
     await route.fulfill({ json: body })
   })
-  await page.goto('processes/new?draft=901')
+  await page.goto(history ? 'processes/8/chat?draft=901' : 'processes/new?draft=901')
   await expect(page.getByRole('button', { name: 'Publicar', exact: true })).toBeEnabled()
   return { release, writes }
 }
@@ -83,5 +94,20 @@ test('proposal review exposes field readers and warns when passing examples cann
   await expect(page.getByText('Los ejemplos comprueban valores ya aportados.', { exact: false })).toBeVisible()
   // External inputs remain legitimate: a warning does not prohibit explicit approval.
   await expect(page.getByRole('button', { name: 'Publicar', exact: true })).toBeEnabled()
+  release()
+})
+
+test('chat publication exposes historical cases that could not be evaluated', async ({ page }) => {
+  const { release } = await preparedDraft(page, 'incomplete')
+  await expect(page.getByText('Ninguna decisión histórica pudo evaluarse por completo')).toBeVisible()
+  await expect(page.getByText('0 de 3 decisiones históricas evaluadas por completo; 3 quedaron incompletas.')).toBeVisible()
+  await page.getByText('Revisar casos sin cobertura completa').click()
+  await expect(page.getByText('library-boundary.html: faltan estimated_cost, copies')).toBeVisible()
+  release()
+})
+
+test('chat publication warns when older previews have no coverage metadata', async ({ page }) => {
+  const { release } = await preparedDraft(page, 'absent')
+  await expect(page.getByText('Cobertura histórica no disponible')).toBeVisible()
   release()
 })

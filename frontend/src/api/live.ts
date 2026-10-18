@@ -161,7 +161,7 @@ export const liveClient: ApiClient = {
   listAlerts: (processId, status) =>
     get<AlertOut[]>(`/processes/${processId}/alerts${query({ status })}`),
   ackAlert: (id, note) => post<AlertOut>(`/alerts/${id}/ack`, { note: note || null }),
-  exportOutcomes: (processId) => getText(`/processes/${processId}/export`),
+  exportOutcomes: (processId) => getText(`/processes/${processId}/export?full=true`),
 
   uploadFiles: async (processId, files, onProgress) => {
     const results = new Array<DocumentUpload>(files.length)

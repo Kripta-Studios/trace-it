@@ -1,7 +1,7 @@
 import type { ValidationReport } from '../../api/contracts'
 import { Notice } from '../shell/Notice'
 
-export function HistoricalCoverage({ validation }: { validation: ValidationReport }) {
+export function HistoricalCoverage({ validation }: { validation: Pick<ValidationReport, 'coverage' | 'not_evaluable'> }) {
   const coverage = validation.coverage
   if (!coverage) {
     return <Notice tone="warning" title="Cobertura histórica no disponible">

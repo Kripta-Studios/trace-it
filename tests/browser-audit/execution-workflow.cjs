@@ -97,6 +97,29 @@ const state = fs.existsSync(statePath) ? JSON.parse(fs.readFileSync(statePath)) 
         await publish.last().click();
         await page.waitForTimeout(1500);
       }
+    } else if(stage==='reprocess') {
+      await visit(`/processes/${state.processId}/rules/${state.ruleIds[0]}`);
+      await page.getByRole('button',{name:'Quitar de la versión',exact:true}).click();
+      await page.waitForTimeout(1000);
+      await visit(`/processes/${state.processId}/panel?publicar=1`);
+      await page.getByRole('button',{name:'Validate and backtest',exact:true}).click();
+      await page.waitForTimeout(1200);
+      await page.getByRole('button',{name:'Publicar',exact:true}).last().click();
+      await page.getByRole('button',{name:'Previsualizar reprocesado',exact:true}).click();
+      await page.waitForTimeout(1200);
+      evidence.preview=await page.locator('body').innerText();
+      const apply=page.getByRole('button',{name:/^Aplicar a \d+ decisi/});
+      if(await apply.count()) {
+        const done=page.waitForResponse(response=>new URL(response.url()).pathname.endsWith(`/processes/${state.processId}/reprocess`)&&response.request().method()==='POST');
+        await apply.click();
+        const response=await done;
+        evidence.reprocess={status:response.status(),body:await response.json()};
+        await page.waitForTimeout(1200);
+      }
+    } else if(stage==='trace') {
+      await visit(`/processes/${state.processId}/instances?i=${state.instances['02-high.pdf']}`);
+      await page.getByRole('button',{name:/^Traza de ejecución/}).click();
+      await page.waitForTimeout(1000);
     } else if(stage==='document') {
       await visit(`/processes/${state.processId}/instances?i=${state.instances['07-html.html']}`);
       await page.getByRole('button',{name:'Abrir documento',exact:true}).click();

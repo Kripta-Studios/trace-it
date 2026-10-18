@@ -7,8 +7,9 @@ import { Overlay } from '../shell/Overlay'
 import { ErrorNotice, Notice } from '../shell/Notice'
 
 /**
- * The backend answers 409 while any instance is still PENDING, so the blocked
- * case is the one worth showing well.
+ * Export the current decision, including a person's later resolution and its trace.
+ * An optional review awaiting a person, or a case without an exportable outcome,
+ * can block the download with 409; pending documents otherwise export as escalations.
  */
 export function ExportButton({ processId }: { processId: number }) {
   const [blocked, setBlocked] = useState<unknown>(null)
