@@ -433,8 +433,18 @@ async def prepare(session, draft_id, revision, user):
     )
     with events.span("compile_process_draft", draft_id=draft_id, author=user.name) as span:
         data["trace_id"] = span.trace_id
-        compiled = await compilation.compile_plan(
-            plan, tables, setups, data["base_configuration"], data.get("base_sources")
+        # Every proposal, evidence, source and execution edit clears the preview. Its
+        # valid artifacts therefore belong to this unchanged pinned candidate; repeating
+        # checks only needs fresh examples and historical evidence, not paid compilation.
+        cached = (data.get("preview") or {}).get("compilations")
+        reuse = bool(cached) and all((item.get("report") or {}).get("valid") for item in cached)
+        span.set(compilations_reused=reuse)
+        compiled = (
+            cached
+            if reuse
+            else await compilation.compile_plan(
+                plan, tables, setups, data["base_configuration"], data.get("base_sources")
+            )
         )
         preview_base = copy.deepcopy(data["base_configuration"])
         if preview_base is not None and "agents" in data:

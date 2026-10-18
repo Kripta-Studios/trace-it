@@ -328,8 +328,12 @@ async def inspect(session, snapshot: dict, inputs: dict, *, tables: dict | None 
         value = field.get("value") if isinstance(field, dict) else None
         return value is None or not str(value).strip()
 
+    # Existing missing inputs are no more replayable than newly introduced ones. Guard
+    # reads before rule code can mistake absent evidence for a runtime defect; the policy
+    # below still rejects missing existing data unless it was already escalated for it.
+    required = {s["name"] for s in snapshot["process"]["symbols"] if s.get("required", False)}
     validation_missing = {
-        instance["id"]: sorted(name for name in newly_required if absent(instance["symbols"], name))
+        instance["id"]: sorted(name for name in required if absent(instance["symbols"], name))
         for instance in inputs["instances"]
         if instance["symbols"] is not None
     }

@@ -754,3 +754,103 @@ def test_one_free_text_symbol_may_still_hold_the_transcript():
     ]
     reviews = dict.fromkeys(proposals(DraftPlan.model_validate(proposal)), "accepted")
     ready(DraftPlan.model_validate(proposal), reviews)
+
+
+async def test_repeated_prepare_reuses_valid_compilation_and_runs_checks_again(api, monkeypatch):
+    from app.features.processes import draft_compilation
+
+    compile_calls, preview_calls = [], []
+    compile_plan, preview = draft_compilation.compile_plan, draft_compilation.preview
+
+    async def compile_once(*args, **kwargs):
+        compile_calls.append(True)
+        return await compile_plan(*args, **kwargs)
+
+    async def recheck(*args, **kwargs):
+        preview_calls.append(True)
+        result = await preview(*args, **kwargs)
+        # Reproduce valid artifacts blocked only by historical validation, not compilation.
+        if len(preview_calls) == 1:
+            result["valid"] = False
+        return result
+
+    monkeypatch.setattr(draft_compilation, "compile_plan", compile_once)
+    monkeypatch.setattr(draft_compilation, "preview", recheck)
+    draft = await prepare_new(api, monkeypatch)
+    assert not draft["preview"]["valid"]
+    repeated = await post(api, draft, "prepare")
+    assert repeated["preview"]["valid"]
+    assert len(compile_calls) == 1 and len(preview_calls) == 2
+    assert repeated["preview"]["compilations"] == draft["preview"]["compilations"]
+
+
+@pytest.mark.parametrize("change", ["plan", "execution", "source"])
+async def test_prepare_cache_is_invalidated_by_candidate_edits(api, monkeypatch, change):
+    from app.features.processes import draft_compilation
+
+    compile_calls = []
+    original = draft_compilation.compile_plan
+
+    async def count_compilation(*args, **kwargs):
+        compile_calls.append(True)
+        return await original(*args, **kwargs)
+
+    monkeypatch.setattr(draft_compilation, "compile_plan", count_compilation)
+    draft = await prepare_new(api, monkeypatch)
+    if change == "plan":
+        revised = copy.deepcopy(draft["plan"])
+        revised["description"] += " Preserve original currency."
+        monkeypatch.setattr(llm, "model_for", per_role({"discovery": [revised]}))
+        draft = await post(api, draft, "messages", message="Preserve original currency.")
+    elif change == "execution":
+        execution = copy.deepcopy(draft["execution"])
+        execution["extraction"]["dpi"] = 300
+        response = await api.put(
+            f"/process-drafts/{draft['id']}/execution",
+            json={"revision": draft["revision"], "execution": execution},
+        )
+        assert response.status_code == 200, response.text
+        draft = response.json()
+    else:
+        response = await api.post(
+            f"/process-drafts/{draft['id']}/workbooks",
+            data={"revision": draft["revision"]},
+            files={"file": ("updated-reference.xlsx", workbook_bytes())},
+        )
+        assert response.status_code == 200, response.text
+        draft = response.json()
+    assert draft["preview"] is None
+    monkeypatch.setattr(llm, "model_for", per_role(scripts(draft["plan"])))
+    repeated = await post(api, await accept(api, draft), "prepare")
+    assert repeated["preview"]["valid"]
+    assert len(compile_calls) == 2
+
+
+@pytest.mark.parametrize("invalid_report", [{"valid": False}, None])
+async def test_failed_artifacts_are_recompiled_on_repeated_prepare(
+    api, monkeypatch, invalid_report
+):
+    from app.features.processes import draft_compilation
+
+    calls = []
+    original = draft_compilation.compile_plan
+    original_preview = draft_compilation.preview
+
+    async def count_compilation(*args, **kwargs):
+        calls.append(True)
+        return await original(*args, **kwargs)
+
+    async def failed_preview(*args, **kwargs):
+        result = await original_preview(*args, **kwargs)
+        if len(calls) == 1:
+            result["compilations"][0]["report"] = invalid_report
+            result["valid"] = False
+        return result
+
+    monkeypatch.setattr(draft_compilation, "compile_plan", count_compilation)
+    monkeypatch.setattr(draft_compilation, "preview", failed_preview)
+    draft = await prepare_new(api, monkeypatch)
+    assert not draft["preview"]["valid"]
+    monkeypatch.setattr(llm, "model_for", per_role(scripts(draft["plan"])))
+    repeated = await post(api, draft, "prepare")
+    assert repeated["preview"]["valid"] and len(calls) == 2

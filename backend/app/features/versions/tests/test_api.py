@@ -3,6 +3,7 @@
 import asyncio
 import uuid
 
+import pytest
 from sqlalchemy import select
 
 from app.core.database import session_factory
@@ -338,15 +339,24 @@ async def test_existing_required_data_and_undeclared_rule_access_remain_blocking
         assert "unknown symbols" in blocked["validation"]["error"]
 
 
-async def test_cases_already_escalated_for_missing_required_data_do_not_block():
+@pytest.mark.parametrize("missing_values", [{}, {"order": None}, {"order": "  "}])
+async def test_cases_already_escalated_for_missing_required_data_do_not_block(missing_values):
     async with client() as api:
-        pid, headers, _, _ = await seed(api)
+        pid, headers, rule_id, _ = await seed(api)
         cases = {}
         async with session_factory() as session:
+            rule = await session.get(Rule, rule_id)
+            rule.code = (
+                "def evaluate(instance, sources, others):\n"
+                "    if not instance.get('order'):\n"
+                "        raise ValueError('MISSING_INPUT: order')\n"
+                "    return {'fires': False, 'reason': 'OK'}\n"
+            )
+            rule.hash = rule_hash(rule.text, rule.code)
             for case in await session.scalars(select(Instance).where(Instance.process_id == pid)):
                 cases[case.name] = case.id
                 if case.name == "b":
-                    case.symbols = stored({})
+                    case.symbols = stored(missing_values)
             await session.commit()
         draft = (await api.get(f"/processes/{pid}/draft", headers=headers)).json()
         required = await api.put(
@@ -355,6 +365,7 @@ async def test_cases_already_escalated_for_missing_required_data_do_not_block():
             json={
                 "expected_revision": draft["revision"],
                 "symbols": [{"name": "order", "type": "text", "required": True}],
+                "rule_ids": [rule_id],
             },
         )
         assert required.status_code == 200, required.text
@@ -370,6 +381,17 @@ async def test_cases_already_escalated_for_missing_required_data_do_not_block():
         assert report["already_escalated"] == [
             {"instance_id": cases["b"], "name": "b", "reason": "MISSING_DATA: order"}
         ]
+        assert report["coverage"] == {
+            "total": 2,
+            "evaluated": 1,
+            "not_evaluable": 1,
+            "partial": 0,
+            "none": 1,
+        }
+        assert report["not_evaluable"][0]["missing_symbols"] == ["order"]
+        assert report["not_evaluable"][0]["unavailable_rules"] == [
+            {"rule_id": rule_id, "symbol": "order"}
+        ]
         await publish(api, pid, headers)
 
         # A case decided PAY that lacks the field is still an error.
@@ -382,6 +404,35 @@ async def test_cases_already_escalated_for_missing_required_data_do_not_block():
         assert blocked["errors"] == [
             {"instance_id": cases["a"], "reason": "MISSING_EXISTING_REQUIRED: order"}
         ]
+
+        # Missing-input guards never excuse an unrelated defect reached before the read.
+        async with session_factory() as session:
+            code = "def evaluate(instance, sources, others):\n    return 1 / 0\n"
+            broken_rule = Rule(
+                process_id=pid,
+                text="Broken independent check",
+                type="prohibition",
+                decision="CHECK",
+                code=code,
+                hash=rule_hash("Broken independent check", code),
+                tests=[],
+                report={"valid": True},
+                status="draft",
+            )
+            session.add(broken_rule)
+            await session.commit()
+            broken_id = broken_rule.id
+        current = (await api.get(f"/processes/{pid}/draft", headers=headers)).json()
+        revised = await api.put(
+            f"/processes/{pid}/draft",
+            headers=headers,
+            json={"rule_ids": [broken_id], "expected_revision": current["revision"]},
+        )
+        assert revised.status_code == 200, revised.text
+        broken = (await validate(api, pid, headers))["validation"]
+        assert not broken["valid"]
+        assert len(broken["errors"]) == 2
+        assert all("ZeroDivisionError" in row["reason"] for row in broken["errors"])
 
 
 async def test_stale_evidence_and_revision_refuse_publication():
