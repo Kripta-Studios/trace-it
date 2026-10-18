@@ -16,7 +16,7 @@ from typing import Any
 
 import httpx
 from pydantic import BaseModel, ValidationError
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.common.exceptions import NotFoundError, TraceError
@@ -96,22 +96,30 @@ class SourceDetail(SourceOut):
 async def current_loads(session: AsyncSession, process_id: int) -> list[Source]:
     """The latest load of each source, in order of first appearance. Every load is kept;
     only the last one per name is current."""
-    loads = await session.scalars(
-        select(Source).where(Source.process_id == process_id).order_by(Source.id)
+    latest = (
+        select(func.max(Source.id).label("id"), func.min(Source.id).label("first_id"))
+        .where(Source.process_id == process_id)
+        .group_by(Source.name)
+        .subquery()
     )
-    current: dict[str, Source] = {}
-    for load in loads:
-        current[load.name] = load
-    return list(current.values())
+    # Do not transfer or deserialize the JSON of superseded snapshots on every read/run.
+    return list(
+        await session.scalars(
+            select(Source).join(latest, Source.id == latest.c.id).order_by(latest.c.first_id)
+        )
+    )
 
 
-def _out(load: Source) -> SourceOut:
+def _out(load: Source, event: Event | None = None) -> SourceOut:
     return SourceOut(
         id=load.id,
         name=load.name,
         origin=load.origin,
         rows=len(load.rows),
         loaded_at=load.loaded_at,
+        status=("down" if event.status == "error" else "ok") if event else None,
+        error=(event.data or {}).get("error") if event else None,
+        checked_at=event.started_at if event else None,
     )
 
 
@@ -149,12 +157,7 @@ async def list_sources(session: AsyncSession, process_id: int) -> list[SourceOut
     status = await sync_status(session, process_id)
     out = []
     for load in await current_loads(session, process_id):
-        row = _out(load)
-        if (event := status.get((process_id, load.name))) is not None:
-            row.status = "down" if event.status == "error" else "ok"
-            row.error = (event.data or {}).get("error")
-            row.checked_at = event.started_at
-        out.append(row)
+        out.append(_out(load, status.get((process_id, load.name))))
     return out
 
 
@@ -170,7 +173,8 @@ async def get_source(session: AsyncSession, process_id: int, name: str) -> Sourc
     )
     if load is None:
         raise NotFoundError(f"Process {process_id} has no load of source {name!r}")
-    return SourceDetail(**_out(load).model_dump(), data=load.rows)
+    status = await sync_status(session, process_id)
+    return SourceDetail(**_out(load, status.get((process_id, name))).model_dump(), data=load.rows)
 
 
 def pack_sources_file(pack_file: Path) -> Path:

@@ -1,6 +1,7 @@
 import { useId, useState, type ReactNode } from 'react'
 import { Activity, CornerDownRight, FileUp, Play, Circle, CheckCircle2, ChevronDown, ClipboardList, Database, FileCode2, FileSearch, History, ListChecks, ListTree, XCircle, type LucideIcon } from 'lucide-react'
 import type {
+  DecisionType,
   InstanceDetail,
   InstanceTrace,
   SpanNode,
@@ -10,6 +11,7 @@ import type {
 } from '../../api/contracts'
 import { Link } from 'react-router'
 import { formatMs, formatRunDate, humanize } from '../../lib/format'
+import { plainReason } from '../../lib/urgency'
 import { ALERTS_TAB, paths } from '../../lib/paths'
 import { cn } from '../../lib/cn'
 import { t } from '../../i18n'
@@ -31,12 +33,14 @@ export function TracePane({
   trace,
   schema,
   versions,
+  decisionTypes,
 }: {
   instance: InstanceDetail | undefined
   trace: InstanceTrace | undefined
   /** The process's symbols: which are required, and which hold a whole transcript. */
   schema?: SymbolIO[]
   versions?: VersionOut[]
+  decisionTypes?: DecisionType[]
 }) {
   const [document, setDocument] = useState<{ instanceId: number; symbol?: string } | null>(null)
   if (!instance) {
@@ -109,7 +113,9 @@ export function TracePane({
               {shown}
             </p>
             <p className="mt-2 text-[12.5px] leading-5 text-muted">
-              {latest?.reason || 'El proceso todavía no ha emitido una decisión.'}
+              {latest
+                ? latest.reason?.trim() || plainReason({ decision: instance.decision, author: latest.author, reason: latest.reason }, decisionTypes ?? []).title
+                : 'El proceso todavía no ha emitido una decisión.'}
             </p>
           </div>
         </div>

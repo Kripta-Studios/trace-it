@@ -34,11 +34,13 @@ const DAY = 86_400_000
 /** "2026-04-06" to a local date at midnight; null for an impossible one like 2026-02-31. */
 export function parseDay(value: unknown): Date | null {
   if (typeof value !== 'string') return null
-  const match = value.match(/^(\d{4})-(\d{2})-(\d{2})/)
+  const match = value.match(/^(\d{4})-(\d{2})-(\d{2})(?:$|T)/)
   if (!match) return null
   const [year, month, day] = match.slice(1).map(Number)
-  const date = new Date(year, month - 1, day)
-  return date.getMonth() === month - 1 && date.getDate() === day ? date : null
+  const date = new Date(0)
+  date.setFullYear(year, month - 1, day)
+  date.setHours(0, 0, 0, 0)
+  return date.getFullYear() === year && date.getMonth() === month - 1 && date.getDate() === day ? date : null
 }
 
 export function dayKey(date: Date): string {
@@ -55,7 +57,7 @@ function text(value: unknown): string | null {
 }
 
 function amountOf(value: unknown): number | null {
-  const number = typeof value === 'number' ? value : typeof value === 'string' ? Number(value) : NaN
+  const number = typeof value === 'number' ? value : typeof value === 'string' && value.trim() ? Number(value) : NaN
   return Number.isFinite(number) ? number : null
 }
 
@@ -72,7 +74,10 @@ export function triage(items: InstanceOut[], today: Date): Triage[] {
     .map((item) => {
       const values = item.values ?? {}
       const issued = parseDay(values[SYMBOL.date])
-      const due = issued ? new Date(issued.getTime() + PAYMENT_TERM_DAYS * DAY) : null
+      // Payment terms count calendar days; adding 24-hour periods crosses midnight
+      // incorrectly when daylight saving time ends.
+      const due = issued ? new Date(issued) : null
+      if (due) due.setDate(due.getDate() + PAYMENT_TERM_DAYS)
       const daysLeft = due ? Math.round((due.getTime() - reference.getTime()) / DAY) : null
       const amount = amountOf(values[SYMBOL.amount])
 

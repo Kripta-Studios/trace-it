@@ -198,3 +198,17 @@ for (const path of ['chat', 'definition/manual']) {
     expect(writes).toEqual(['/processes/6/draft'])
   })
 }
+
+test('mobile conversation keeps the composer and actions inside the viewport', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 })
+  await fixture(page, 'empty')
+  await page.goto('processes/6/chat')
+  const composer = page.getByPlaceholder('Pregunta algo o pide un cambio en el proceso.')
+  await expect(composer).toBeVisible()
+  for (const control of [composer, page.getByRole('button', { name: 'Nueva', exact: true }), page.getByRole('button', { name: 'Enviar', exact: true })]) {
+    const bounds = await control.boundingBox()
+    expect(bounds).not.toBeNull()
+    expect(bounds!.x).toBeGreaterThanOrEqual(0)
+    expect(bounds!.x + bounds!.width).toBeLessThanOrEqual(390)
+  }
+})

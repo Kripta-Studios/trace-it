@@ -166,16 +166,25 @@ export const liveClient: ApiClient = {
     const results = new Array<DocumentUpload>(files.length)
     let next = 0
     let done = 0
+    let failed = false
+    let failure: unknown
     async function worker() {
-      while (next < files.length) {
+      while (!failed && next < files.length) {
         const index = next++
         onProgress?.({ index, phase: 'reading', done, total: files.length, name: files[index].name })
         const form = new FormData()
         form.append('file', files[index])
-        let result = await upload<DocumentUpload>(`/processes/${processId}/files`, form)
-        // The same file again: a PENDING instance keeps the symbols it had, so read it again.
-        if (!result.created && result.status === 'PENDING') {
-          result = await post<DocumentUpload>(`/instances/${result.instance_id}/extract`, {})
+        let result: DocumentUpload
+        try {
+          result = await upload<DocumentUpload>(`/processes/${processId}/files`, form)
+          // The same file again: a PENDING instance keeps the symbols it had, so read it again.
+          if (!result.created && result.status === 'PENDING') {
+            result = await post<DocumentUpload>(`/instances/${result.instance_id}/extract`, {})
+          }
+        } catch (error) {
+          if (!failed) failure = error
+          failed = true
+          return
         }
         results[index] = result
         done += 1
@@ -194,6 +203,9 @@ export const liveClient: ApiClient = {
     await Promise.all(
       Array.from({ length: Math.min(UPLOAD_CONCURRENCY, files.length) }, () => worker()),
     )
+    // Keep the UI busy until requests already sent have settled. Otherwise retrying
+    // after the first failure overlaps two upload batches.
+    if (failed) throw failure
     return results
   },
   listSources: (processId) => get<SourceOut[]>(`/processes/${processId}/sources`),

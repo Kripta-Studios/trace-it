@@ -50,11 +50,27 @@ export function TruthSources({ processId }: { processId: number }) {
   })
   const diff = sync.data?.diff
 
+  if (sources.isPending) return <Notice title="Cargando fuentes…" />
+  if (sources.isError) {
+    return (
+      <div className="space-y-3">
+        <ErrorNotice error={sources.error} />
+        <Button onClick={() => void sources.refetch()} disabled={sources.isFetching}>Reintentar</Button>
+      </div>
+    )
+  }
+
   return (
     <div className="space-y-8">
       <div className="grid gap-3">
         <NestedCard label="excel de referencia">
           <div className="space-y-2 px-3.5 py-3">
+            {parameters.isError ? (
+              <div className="space-y-2">
+                <ErrorNotice error={parameters.error} />
+                <Button onClick={() => void parameters.refetch()} disabled={parameters.isFetching}>Reintentar parámetros</Button>
+              </div>
+            ) : null}
             <Field label="Fecha de corte" hint="Los cruces con fechas se evalúan contra este día.">
               <Input
                 type="date"

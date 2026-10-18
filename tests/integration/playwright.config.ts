@@ -25,6 +25,7 @@ const database =
 
 export default defineConfig({
   testDir: '.',
+  outputDir: './test-results/demo',
   testMatch: 'demo-path.spec.ts',
   timeout: 60_000,
   expect: { timeout: 15_000 },

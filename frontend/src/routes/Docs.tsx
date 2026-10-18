@@ -39,8 +39,8 @@ export function Docs() {
     <div className="bg-canvas">
       <Masthead />
       <main>
-        <Sheet className="grid gap-10 pb-16 pt-10 lg:grid-cols-[minmax(0,17.5rem)_minmax(0,1fr)] lg:items-start">
-          <aside className="lg:sticky lg:top-24">
+        <Sheet className="grid grid-cols-1 gap-10 pb-16 pt-10 lg:grid-cols-[minmax(0,17.5rem)_minmax(0,1fr)] lg:items-start">
+          <aside className="min-w-0 lg:sticky lg:top-24">
             <p className="u-kicker">Docs</p>
             <h1 className="u-display mt-3 max-w-[14ch] text-[28px]">Cinco decisiones.</h1>
             <p className="mt-3 max-w-[36ch] text-[13.5px] leading-6 text-muted">
@@ -77,7 +77,7 @@ export function Docs() {
             <p className="mt-5 hidden font-mono text-[11px] text-faint lg:block">← → para pasar</p>
           </aside>
 
-          <article>
+          <article className="min-w-0">
             <p className="font-mono text-[11px] text-faint">
               ADR {current.adrs.join(' · ')}
             </p>

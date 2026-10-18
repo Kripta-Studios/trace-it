@@ -197,6 +197,37 @@ async def test_invalid_response_fails_loudly_when_it_persists() -> None:
         await download(fake)
 
 
+@pytest.mark.parametrize("total,pages", [(0, 2), (0, -1), (-1, 0), (45, 4), (45, 0)])
+async def test_invalid_pagination_metadata_is_retried_without_advancing(total, pages):
+    requested_pages = []
+
+    def invalid(n, request):
+        page = int(request.url.params["pagina"])
+        requested_pages.append(page)
+        body = page_xml(page, [] if total <= 0 else ENTRIES, total=total)
+        expected_pages = (total + 19) // 20
+        body = body.replace(
+            f"<paginas>{expected_pages}</paginas>".encode(),
+            f"<paginas>{pages}</paginas>".encode(),
+        )
+        return httpx.Response(200, content=body)
+
+    fake = FakeERP(invalid)
+    with pytest.raises(SyncError, match="gave up after 4 attempts.*pagination"):
+        await download(fake)
+    assert fake.calls == 4
+    assert requested_pages == [1] * 4
+
+
+@pytest.mark.parametrize("pages", [0, 1])
+async def test_empty_source_accepts_zero_or_one_empty_page(pages):
+    body = page_xml(1, []).replace(b"<paginas>0</paginas>", f"<paginas>{pages}</paginas>".encode())
+    fake = FakeERP(lambda n, request: httpx.Response(200, content=body))
+    rows, connector = await download(fake)
+    assert rows == []
+    assert connector.stats.pages == fake.calls == 1
+
+
 async def test_timeouts_are_retried_then_abort() -> None:
     def slow(n: int, request: httpx.Request) -> None:
         raise httpx.ReadTimeout("slow", request=request)

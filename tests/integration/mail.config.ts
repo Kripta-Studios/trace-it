@@ -5,6 +5,7 @@ const root = resolve(import.meta.dirname, '../..')
 const api = process.env.MAIL_TEST_API_URL ?? 'http://127.0.0.1:18285'
 const webPort = process.env.MAIL_TEST_WEB_PORT ?? '15285'
 export default defineConfig({
+  outputDir: './test-results/mail',
   testDir: '.', testMatch: 'mail.spec.ts', timeout: 60_000, workers: 1, retries: 0,
   expect: { timeout: 30_000 }, reporter: 'list',
   use: { baseURL: `http://127.0.0.1:${webPort}`, trace: 'retain-on-failure' },

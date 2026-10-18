@@ -331,6 +331,13 @@ class HttpConnector:
 
         def parse(root: ET.Element) -> tuple[int, int, list[dict]]:
             total, pages = _number(root, p.total_path), _number(root, p.pages_path)
+            expected_pages = (total + p.page_size - 1) // p.page_size
+            valid_pages = {0, 1} if total == 0 else {expected_pages}
+            if total < 0 or pages not in valid_pages:
+                raise InvalidResponse(
+                    f"invalid pagination: {total} records in {pages} pages "
+                    f"with page size {p.page_size}"
+                )
             records = [map_record(r, self.config.fields) for r in root.findall(p.records_path)]
             expected = max(0, min(p.page_size, total - (page - p.first_page) * p.page_size))
             if len(records) != expected:

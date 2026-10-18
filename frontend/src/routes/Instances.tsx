@@ -73,15 +73,13 @@ export function Instances() {
   const select = (id: number) =>
     setParams(runId ? { run: String(runId), i: String(id) } : { i: String(id) })
 
-  const selectedId = params.get('i') ? Number(params.get('i')) : rows[0]?.id
-  const selectedVisible = rows.some((item) => item.id === selectedId)
-
-  useEffect(() => {
-    if (!rows.length || selectedVisible) return
-    setParams(runId ? { run: String(runId), i: String(rows[0].id) } : { i: String(rows[0].id) }, {
-      replace: true,
-    })
-  }, [rows, selectedVisible, setParams, runId])
+  const requestedId = params.get('i') ? Number(params.get('i')) : undefined
+  const filtered = Boolean(text) || filter !== 'TODAS' || Boolean(runId)
+  // A filter must never leave an unrelated document open. Without a filter, honor
+  // direct links even if that document is absent from the list, and show its error.
+  const selectedId = filtered && !rows.some((item) => item.id === requestedId)
+    ? rows[0]?.id
+    : requestedId ?? rows[0]?.id
 
   const detail = useQuery({
     queryKey: keys.instance(selectedId ?? 0),
@@ -113,6 +111,11 @@ export function Instances() {
       {instances.isError || run.isError ? (
         <div className="px-4 py-4 sm:px-6">
           <ErrorNotice error={instances.error ?? run.error} />
+        </div>
+      ) : null}
+      {detail.isError || trace.isError ? (
+        <div className="px-4 py-4 sm:px-6">
+          <ErrorNotice error={detail.error ?? trace.error} />
         </div>
       ) : null}
       {run.data ? (
@@ -185,6 +188,7 @@ export function Instances() {
           trace={trace.data}
           schema={process.data?.symbols}
           versions={versions.data}
+          decisionTypes={process.data?.decision_types}
         />
       </div>
       )}

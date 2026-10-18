@@ -101,7 +101,8 @@ async def latest_decisions(session: AsyncSession, instances: list[Instance]) -> 
     rows = await session.scalars(
         select(Decision)
         .where(Decision.instance_id.in_([i.id for i in instances]))
-        .order_by(Decision.id)
+        .distinct(Decision.instance_id)
+        .order_by(Decision.instance_id, Decision.id.desc())
     )
     return {row.instance_id: row for row in rows}
 
@@ -550,7 +551,8 @@ async def summary(session: AsyncSession, process_id: int) -> ProcessSummary:
         rows = await session.scalars(
             select(Decision)
             .where(Decision.instance_id.in_([i.id for i in instances]), Decision.author == ENGINE)
-            .order_by(Decision.id)
+            .distinct(Decision.instance_id)
+            .order_by(Decision.instance_id, Decision.id.desc())
         )
         engine_rows = {row.instance_id: row for row in rows}
     fires: Counter[int] = Counter()

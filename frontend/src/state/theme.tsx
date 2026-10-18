@@ -24,8 +24,8 @@ function paint(theme: Theme) {
   document.documentElement.style.colorScheme = theme
   const favicon = document.querySelector<HTMLLinkElement>('link[rel="icon"]')
   const touchIcon = document.querySelector<HTMLLinkElement>('link[rel="apple-touch-icon"]')
-  if (favicon) favicon.href = theme === 'dark' ? '/favicon-dark.png' : '/favicon.png'
-  if (touchIcon) touchIcon.href = theme === 'dark' ? '/apple-touch-icon-dark.png' : '/apple-touch-icon.png'
+  if (favicon) favicon.href = `${import.meta.env.BASE_URL}${theme === 'dark' ? 'favicon-dark.png' : 'favicon.png'}`
+  if (touchIcon) touchIcon.href = `${import.meta.env.BASE_URL}${theme === 'dark' ? 'apple-touch-icon-dark.png' : 'apple-touch-icon.png'}`
 }
 
 type ThemeState = {

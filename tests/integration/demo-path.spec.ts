@@ -88,7 +88,7 @@ test.beforeAll(async ({ browser, request }) => {
 })
 
 test.afterAll(async () => {
-  await page.close()
+  await page?.close()
 })
 
 /**

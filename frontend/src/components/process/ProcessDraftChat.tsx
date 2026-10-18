@@ -568,12 +568,12 @@ export function ProcessDraftChat({
   return (
     <div
       className={cn(
-        'grid min-h-0 flex-1 lg:grid-cols-[minmax(0,1.15fr)_minmax(21rem,0.85fr)]',
+        'grid min-h-0 min-w-0 flex-1 grid-cols-1 lg:grid-cols-[minmax(0,1.15fr)_minmax(21rem,0.85fr)]',
         className,
       )}
     >
-      <section className="flex min-h-0 flex-col border-b border-hairline lg:border-b-0 lg:border-r">
-        <header className="flex items-center justify-between gap-3 border-b border-hairline px-5 py-3">
+      <section className="flex min-h-0 min-w-0 flex-col border-b border-hairline lg:border-b-0 lg:border-r">
+        <header className="flex flex-wrap items-center justify-between gap-3 border-b border-hairline px-5 py-3">
           <div className="min-w-0">
             <p className="truncate text-[13px] font-medium text-ink">
               {current.plan.name || processName || 'Nuevo proceso'}
@@ -582,13 +582,13 @@ export function ProcessDraftChat({
               conversación {current.id} · revisión {current.revision}
             </p>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex min-w-0 max-w-full items-center gap-2">
             {candidates.length ? (
               <Select
                 aria-label="Historial de conversaciones"
                 value={current.id}
                 onChange={(event) => selectDraft(Number(event.target.value))}
-                className="w-56 py-1"
+                className="min-w-0 w-56 py-1"
               >
                 {candidates.map((item) => (
                   <option key={item.id} value={item.id}>
