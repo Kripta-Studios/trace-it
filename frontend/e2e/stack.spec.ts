@@ -1,10 +1,28 @@
 import { randomUUID } from 'node:crypto'
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
-import { test, expect, request as requests, type APIRequestContext, type Page } from '@playwright/test'
+import { test, expect as baseExpect, request as requests, type APIRequestContext, type Page } from '@playwright/test'
+
+// This suite uses the real gateway, including its shared 10/minute login limit.
+// API fixtures and browser identity refreshes must consume the same paced schedule.
+const expect = baseExpect.configure({ timeout: 20_000 })
+let nextLoginAt = 0
+async function paceLogin() {
+  const delay = Math.max(0, nextLoginAt - Date.now())
+  nextLoginAt = Math.max(Date.now(), nextLoginAt) + 6500
+  if (delay) await new Promise(resolve => setTimeout(resolve, delay))
+}
+test.beforeEach(async ({ page }) => {
+  test.setTimeout(120_000)
+  await page.route('**/api/login', async route => {
+    await paceLogin()
+    await route.continue()
+  })
+})
 
 // Writes are manager-only; ci-stack.sh loads the pack, which seeds this manager.
 async function seededManager(request: APIRequestContext) {
+  await paceLogin()
   const login = await request.post('api/login', { data: { email: 'martin@trace-it.local' } })
   expect(login.status(), await login.text()).toBe(200)
   return { 'X-User-Id': String((await login.json()).id) }
@@ -16,6 +34,7 @@ async function managerFixture(request: APIRequestContext, page?: Page) {
     headers: await seededManager(request), data: { name: 'CI manager', email, role: 'manager' },
   })
   expect(created.status()).toBe(201)
+  await paceLogin()
   const login = await request.post('api/login', { data: { email } })
   expect(login.status()).toBe(200)
   const headers = { 'X-User-Id': String((await login.json()).id) }
@@ -24,7 +43,9 @@ async function managerFixture(request: APIRequestContext, page?: Page) {
     const user = page.getByRole('button', { name: new RegExp(email.replaceAll('.', '\\.')) })
     await expect(user).toContainText('CI manager')
     await expect(user).toContainText(/responsable/i)
+    const signedIn = page.waitForResponse(response => response.url().endsWith('/api/login') && response.request().postDataJSON()?.email === email)
     await user.click()
+    expect((await signedIn).status()).toBe(200)
     // The sidebar now names the chosen identity.
     await expect(page.getByRole('link', { name: /CI manager\s*Responsable/ })).toBeVisible()
   }
@@ -128,16 +149,6 @@ test('production assets and navigation stay inside the deployment prefix', async
 })
 
 test('console displays a process created in the real PostgreSQL database', async ({ page, request }) => {
-  test.setTimeout(120_000)
-  // Development identity mode logs in on every full-page visit. Respect the real
-  // production gateway's 10/minute login throttle while checking these legacy routes.
-  let nextLoginAt = 0
-  await page.route('**/api/login', async route => {
-    const delay = Math.max(0, nextLoginAt - Date.now())
-    nextLoginAt = Math.max(Date.now(), nextLoginAt) + 6500
-    if (delay) await new Promise(resolve => setTimeout(resolve, delay))
-    await route.continue()
-  })
   await managerFixture(request, page)
   const process = await processFixture(request)
   await page.goto('processes')
