@@ -4,6 +4,7 @@ import json
 from dataclasses import replace
 
 import httpx
+import pytest
 
 from app.features.ingestion.extraction_plan import ExtractionField
 from app.features.ingestion.schema_fields import (
@@ -280,3 +281,63 @@ def test_helm_schema_mapping_uses_pinned_vision_model_without_text_judge(setting
     assert SchemaFieldReader(pinned)._chain() == [("helmcode", "gemma4")]
     with_text_judge = replace(pinned, text_providers=("helmcode",))
     assert SchemaFieldReader(with_text_judge)._chain() == [("helmcode", "qwen3.6")]
+
+
+@pytest.mark.parametrize(
+    "raw,expected",
+    [
+        ("120 EUR", "120"),
+        ("120.01EUR", "120.01"),
+        ("150 eur", "150"),
+        ("€ 1.234,50", "1234.50"),
+        ("USD1,234.50", "1234.50"),
+        ("1 234,50 GBP", "1234.50"),
+        ("£0", "0"),
+        ("-12,50 $", "-12.50"),
+        ("120.1234 EUR", "120.1234"),
+    ],
+)
+def test_currency_annotated_schema_numbers_preserve_amount(raw, expected):
+    assert normalize_schema_value(raw, "number") == expected
+    result, warnings = read_schema_fields(
+        lines(f"estimated_cost: {raw}\ncopies: 3"),
+        [field("estimated_cost", "number"), field("copies", "number")],
+        0.9,
+    )
+    assert warnings == []
+    assert result["estimated_cost"].value == expected
+    assert result["estimated_cost"].verification == "verified"
+    assert result["estimated_cost"].candidates[0].raw == raw
+    assert result["copies"].value == "3"
+
+
+@pytest.mark.parametrize(
+    "raw",
+    [
+        "1,234 EUR",
+        "1.234 EUR",
+        "12.34,50 EUR",
+        "EUR120USD",
+        "120 EUR USD",
+        "1EUR20",
+        "about 120 EUR",
+        "120 EUR per copy",
+        "120 kg",
+        "EURNaN",
+        "EUR",
+        "120/150 EUR",
+    ],
+)
+def test_currency_annotations_do_not_relax_ambiguous_or_non_numeric_values(raw):
+    with pytest.raises(ValueError):
+        normalize_schema_value(raw, "number")
+
+
+def test_currency_parser_change_invalidates_schema_extraction_cache():
+    from app.features.ingestion.extraction_plan import ExtractionPlan
+
+    current = ExtractionPlan(process_id=1, fields=[field("estimated_cost", "number")])
+    prior = current.model_copy(update={"version": "schema-v1"})
+    assert current.version == "schema-v2"
+    assert current.field_fingerprint != prior.field_fingerprint
+    assert current.fingerprint != prior.fingerprint

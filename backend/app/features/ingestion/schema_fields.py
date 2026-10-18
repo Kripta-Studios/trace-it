@@ -71,6 +71,16 @@ def normalize_schema_value(raw: str, kind: str) -> str:
             return "false"
         raise ValueError("Invalid boolean")
     if kind in {"number", "integer"}:
+        # A literal may carry one currency annotation, without changing its amount.
+        # Only trim a known token at an edge: embedded units, prose, and multiple
+        # currencies must still fail the numeric grammar below. Never round or convert.
+        value = re.sub(
+            r"^(?:EUR|USD|GBP|[€$£])\s*|\s*(?:EUR|USD|GBP|[€$£])$",
+            "",
+            value,
+            count=1,
+            flags=re.IGNORECASE,
+        )
         compact = re.sub(r"[ \u00a0]", "", value)
         if not re.fullmatch(r"[+-]?\d[\d.,]*", compact):
             raise ValueError("Invalid number")

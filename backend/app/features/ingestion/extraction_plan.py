@@ -29,7 +29,7 @@ class ExtractionPlan(BaseModel):
     fields: list[ExtractionField] = Field(default_factory=list)
     rules: list[dict] = Field(default_factory=list)
     warnings: list[dict] = Field(default_factory=list)
-    version: str = "schema-v1"
+    version: str = "schema-v2"
 
     @property
     def fingerprint(self) -> str:
