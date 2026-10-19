@@ -448,6 +448,31 @@ async def _context(session: AsyncSession, instance: Instance) -> tuple[dict[str,
     return context, types
 
 
+async def _current_assistant_setup(
+    session: AsyncSession, process_id: int, context_version_id: int | None
+) -> llm.Setup | None:
+    """New advice uses the currently approved assistant, not a retired historical provider.
+
+    The calling workflow keeps the decision's original rules, outcomes and evidence.
+    This is a new model call, never deterministic replay or an edit to the old snapshot.
+    """
+    from app.features.versions.configuration import setups
+    from app.features.versions.service import active
+
+    version = await active(session, process_id, required=False)
+    if version:
+        configured = setups(version.snapshot)
+    else:
+        process = await session.get(Process, process_id)
+        configured = await use_cases.setups(session, process.use_case_id)
+    if span := events.current():
+        span.set(
+            context_version_id=context_version_id,
+            model_version_id=version.id if version else None,
+        )
+    return configured.get("assistant")
+
+
 async def suggest(session: AsyncSession, instance_id: int) -> Suggestion:
     instance = await session.get(Instance, instance_id)
     if instance is None:
@@ -457,20 +482,7 @@ async def suggest(session: AsyncSession, instance_id: int) -> Suggestion:
         context, types = await _context(session, instance)
         shown = {k: v for k, v in context.items() if k not in {"version_id", "paid"}}
         prompt = json.dumps(shown, ensure_ascii=False, default=str)
-        process = await session.get(Process, instance.process_id)
-        from app.features.versions.configuration import setups
-        from app.features.versions.model import ProcessVersion
-
-        version = (
-            await session.get(ProcessVersion, context["version_id"])
-            if context["version_id"]
-            else None
-        )
-        setup = (
-            setups(version.snapshot)
-            if version
-            else await use_cases.setups(session, process.use_case_id)
-        ).get("assistant")
+        setup = await _current_assistant_setup(session, instance.process_id, context["version_id"])
         suggestion, trace = await llm.run(
             assistant,
             "assistant",
@@ -670,7 +682,6 @@ async def suggest_rule(
     small on purpose: no file text, and only resolutions of cases the same rule escalated."""
     from app.features.decisions.service import current_sources
     from app.features.versions.configuration import rules as frozen_rules
-    from app.features.versions.configuration import setups
     from app.features.versions.model import ProcessVersion
 
     version = await session.get(ProcessVersion, engine.version_id)
@@ -767,7 +778,7 @@ async def suggest_rule(
         "assistant",
         json.dumps(context, ensure_ascii=False, default=str),
         instructions=llm.prompt("reviewer_agent", "shared"),
-        setup=setups(version.snapshot).get("assistant"),
+        setup=await _current_assistant_setup(session, instance.process_id, version.id),
         deps=RuleDeps(
             identifiers(instance) + [r["name"] for r in related],
             set(context["evidence_refs"]),

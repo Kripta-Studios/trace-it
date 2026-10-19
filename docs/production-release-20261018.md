@@ -45,6 +45,13 @@ Helmcode vision readers become `compatible:gpt-6-luna` at the official OpenAI en
 Repeated Luna calls are not independent verification votes. Historical snapshots and
 decisions remain immutable; new settings become new published versions.
 
+New escalation suggestions and rule-amendment proposals use the assistant configuration
+from the process's currently published version, including for cases decided before a
+provider migration. Their context still uses the original decision's rules, outcomes and
+evidence. These are new advisory calls, not historical replays. The trace records both
+`context_version_id` and `model_version_id`; neither snapshots nor past decisions change.
+Unpublished shared defaults do not override a published process's assistant configuration.
+
 Official model documentation: https://developers.openai.com/api/docs/models/gpt-6-luna
 Actual synthetic tests cover Responses typed output, image reading, extraction citations
 and candidate selection. Generic compatible-provider cost remains explicitly unknown.

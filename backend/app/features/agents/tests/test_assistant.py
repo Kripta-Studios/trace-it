@@ -1,8 +1,11 @@
 """Against the local database (`make test-db`); skipped if absent. The model is scripted:
 no network."""
 
+import json
 import socket
 import uuid
+from copy import deepcopy
+from types import SimpleNamespace
 
 import pytest
 from httpx import ASGITransport, AsyncClient
@@ -15,11 +18,12 @@ from app.core.events import Event
 from app.features.agents import assistant, llm
 from app.features.decisions.model import Decision
 from app.features.ingestion.model import File, Instance
-from app.features.processes.model import DecisionType
+from app.features.processes.model import DecisionType, Process
 from app.features.rules.model import Rule
 from app.main import app
 from tests.support import rows
 from tests.support.models import per_role, retry_prompts, user_json
+from tests.support.users import manager_client
 
 
 def _db_available() -> bool:
@@ -154,6 +158,117 @@ async def test_suggests_and_records_an_event(case, monkeypatch) -> None:
     assert event.data["model"] == "fake/model"
     assert event.data["decision"] == "NO_PAGAR"
     assert event.duration_ms is not None
+
+
+@pytest.mark.parametrize("endpoint", ["suggestion", "proposal", "rule-proposal"])
+async def test_new_advice_uses_current_model_with_unchanged_historical_context(
+    case, monkeypatch, endpoint
+):
+    from app.features.versions import configuration, service
+    from app.features.versions.model import ProcessVersion
+
+    async with session_factory() as session:
+        instance = await session.get(Instance, case["escalated"])
+        process = await session.get(Process, instance.process_id)
+        original = await configuration.workspace(session, process.id)
+        original["agents"]["assistant"]["settings"].update(
+            model="helmcode:deepseek-v4-flash",
+            fallback_models=["helmcode:glm5.3-flash", "helmcode:qwen3.6"],
+        )
+        historical = await service.publish_snapshot(
+            session, process, original, "fixture", "Old provider", {}
+        )
+        engine_decision = await session.scalar(
+            select(Decision).where(Decision.instance_id == instance.id)
+        )
+        engine_decision.version_id = historical.id
+        engine_decision.reason = "amount > 1000"
+        current = deepcopy(original)
+        current["agents"]["assistant"]["settings"].update(
+            model="openai-responses:gpt-6-luna", fallback_models=[]
+        )
+        current["process"]["description"] = "New policy, not this historical case's policy"
+        current["rules"][0]["text"] = "New rule text, not the historical escalation"
+        published = await service.publish_snapshot(
+            session, process, current, "fixture", "Retire old provider", {}
+        )
+        if endpoint == "rule-proposal":
+            session.add(
+                Decision(
+                    instance_id=instance.id,
+                    version_id=historical.id,
+                    decision="PAGAR",
+                    author="Manager",
+                    reason="Reviewed and approved",
+                    results=[],
+                    rules_hash="h",
+                )
+            )
+        await session.commit()
+        historical_id, current_id = historical.id, published.id
+        historical_hash = historical.content_hash
+        before_decisions = [
+            (d.id, d.version_id, d.decision, deepcopy(d.results), d.reason)
+            for d in await session.scalars(
+                select(Decision).where(Decision.instance_id == instance.id).order_by(Decision.id)
+            )
+        ]
+
+    calls = []
+
+    async def answer(agent, role, prompt, **kwargs):
+        calls.append((json.loads(prompt), kwargs["setup"]))
+        response = (
+            assistant.RuleSuggestion(
+                summary="No additional rule",
+                rationale="The existing evidence remains unchanged",
+                evidence=["symbol:amount"],
+                no_rule_reason="The manager has already reviewed this case",
+            )
+            if endpoint == "rule-proposal"
+            else assistant.Suggestion(**SUGGESTION)
+        )
+        return response, SimpleNamespace(model=kwargs["setup"].settings.model)
+
+    monkeypatch.setattr(llm, "run", answer)
+    async with manager_client() as api:
+        response = await api.request(
+            "GET" if endpoint == "suggestion" else "POST",
+            f"/instances/{case['escalated']}/{endpoint}",
+        )
+    assert response.status_code == (200 if endpoint == "suggestion" else 201), response.text
+    [(context, setup)] = calls
+    assert setup.settings.model == "openai-responses:gpt-6-luna"
+    assert setup.settings.fallback_models == []
+    assert context["use_case_description"] == DESCRIPTION
+    historical_rule = (
+        context["escalation"]["rule"]
+        if endpoint == "rule-proposal"
+        else context["escalation"]["fired_rules"][0]
+    )
+    assert historical_rule["text"] == "If amount > 1000, escalate"
+    async with session_factory() as session:
+        saved = await session.get(ProcessVersion, historical_id)
+        assert saved.snapshot == original and saved.content_hash == historical_hash
+        assert (await session.get(ProcessVersion, current_id)).snapshot == current
+        after_decisions = [
+            (d.id, d.version_id, d.decision, d.results, d.reason)
+            for d in await session.scalars(
+                select(Decision)
+                .where(Decision.instance_id == case["escalated"])
+                .order_by(Decision.id)
+            )
+        ]
+        assert after_decisions == before_decisions
+        span = await session.scalar(
+            select(Event).where(
+                Event.instance_id == case["escalated"],
+                Event.step
+                == ("suggest_rule" if endpoint == "rule-proposal" else "suggest_escalation"),
+            )
+        )
+        assert span.data["context_version_id"] == historical_id
+        assert span.data["model_version_id"] == current_id
 
 
 @pytest.mark.parametrize("case", ["MANUAL_CHECK"], indirect=True)
